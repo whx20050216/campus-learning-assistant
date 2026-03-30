@@ -1,0 +1,23 @@
+# Java
+backend/java/target/
+backend/java/*.iml
+backend/java/.idea/
+backend/java/.mvn/
+
+# Python
+backend/python/__pycache__/
+backend/python/venv/
+backend/python/.env
+backend/python/*.pyc
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+
+# Docker
+infra/docker/volumes/
+*.log
