@@ -9,6 +9,8 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -69,4 +71,59 @@ public class AiEngineService {
 
     // OCR 结果 DTO
     public record OcrResult(String text, Double confidence, String source) {}
+
+    /**
+     * 调用 Python NLP 服务进行文本分析
+     * @param text OCR 识别出的文本
+     * @return NLP分析结果（关键词、摘要等）
+     */
+    public NlpResult analyzeText(String text) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            // 构建 JSON 请求体
+            Map<String, String> body = new HashMap<>();
+            body.put("text", text);
+
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+
+            log.info("调用 Python NLP 服务，文本长度: {}", text.length());
+
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    PYTHON_API + "/ai/nlp",
+                    request,
+                    Map.class
+            );
+
+            Map result = response.getBody();
+            Map stats = (Map) result.get("stats");
+
+            // 解析关键词列表
+            List<Map<String, Object>> keywordsRaw = (List<Map<String, Object>>) result.get("keywords");
+            List<String> keywords = keywordsRaw.stream()
+                    .map(k -> (String) k.get("word"))
+                    .toList();
+
+            return new NlpResult(
+                    keywords,
+                    (String) result.get("summary"),
+                    (List<String>) result.get("key_sentences"),
+                    Integer.valueOf(stats.get("char_count").toString())
+            );
+
+        } catch (Exception e) {
+            log.error("NLP 调用失败: {}", e.getMessage());
+            // 降级返回空结果
+            return new NlpResult(List.of(), "", List.of(), 0);
+        }
+    }
+
+    // NLP 结果 DTO
+    public record NlpResult(
+            List<String> keywords,
+            String summary,
+            List<String> keySentences,
+            int charCount
+    ) {}
 }

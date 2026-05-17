@@ -21,3 +21,16 @@ frontend/dist/
 # Docker
 infra/docker/volumes/
 *.log
+
+# 开发文档与测试文件
+开发/
+docs/
+regression_*
+test_*.py
+test*.png
+test*.pdf
+*.ps1          # PowerShell 测试脚本
+
+# 其他
+*.iml
+.DS_Store

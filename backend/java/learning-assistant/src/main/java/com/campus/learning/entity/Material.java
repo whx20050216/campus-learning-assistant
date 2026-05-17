@@ -1,54 +1,39 @@
 package com.campus.learning.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@Entity
-@Table(name = "materials")
+@TableName("materials")
 public class Material {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @TableId(type = IdType.AUTO)
     private Long id;
 
-    @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    @Column(nullable = false)
-    private String filename;
+    private String title;
 
-    @Column(name = "file_type", nullable = false)
-    @Enumerated(EnumType.STRING)
-    private FileType fileType;
+    private String fileUrl;
 
-    @Column(name = "minio_path", nullable = false)
-    private String minioPath;
+    private String fileType;
 
-    @Column(name = "file_size")
     private Long fileSize;
 
-    @Column(name = "ocr_text", columnDefinition = "TEXT")
-    private String ocrText;
+    private Integer pages;
 
-    @Column(name = "ocr_confidence")
-    private Float ocrConfidence;
+    private String md5;
 
-    @Column(name = "status")
-    @Enumerated(EnumType.STRING)
-    private Status status = Status.uploaded;
+    private String courseTag;
 
-    @Column(name = "created_at")
+    private String status;
+
+    private String source;
+
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
-    public enum FileType {
-        PPT, PDF, IMAGE
-    }
-
-    public enum Status {
-        uploaded, processing, completed, failed
-    }
 }

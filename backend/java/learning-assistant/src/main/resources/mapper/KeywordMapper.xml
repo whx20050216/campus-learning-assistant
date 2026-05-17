@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.learning.mapper.KeywordMapper">
+
+    <select id="findByMaterialId" resultType="com.campus.learning.entity.Keyword">
+        SELECT * FROM keyword WHERE material_id = #{materialId}
+    </select>
+
+    <select id="findMaterialIdsByKeyword" resultType="java.lang.Long">
+        SELECT DISTINCT material_id FROM keyword WHERE keyword = #{keyword}
+    </select>
+
+</mapper>

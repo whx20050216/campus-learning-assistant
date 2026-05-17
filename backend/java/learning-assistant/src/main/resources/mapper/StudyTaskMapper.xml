@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.learning.mapper.StudyTaskMapper">
+
+    <select id="findByPlanIdOrderByTaskDateAsc" resultType="com.campus.learning.entity.StudyTask">
+        SELECT * FROM study_task
+        WHERE plan_id = #{planId}
+        ORDER BY task_date ASC
+    </select>
+
+</mapper>
