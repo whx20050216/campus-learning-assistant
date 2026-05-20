@@ -33,6 +33,15 @@ public class Material {
 
     private String source;
 
+    @com.baomidou.mybatisplus.annotation.TableField("audit_status")
+    private String auditStatus;
+
+    @com.baomidou.mybatisplus.annotation.TableField("deleted_at")
+    private LocalDateTime deletedAt;
+
+    @com.baomidou.mybatisplus.annotation.TableField("deleted_by")
+    private String deletedBy;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

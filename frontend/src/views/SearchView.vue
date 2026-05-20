@@ -1,118 +1,144 @@
 <template>
-  <div class="search-page">
-    <!-- 头部 -->
-    <header class="page-header">
-      <h1 class="title">🔍 智能资料搜索</h1>
-      <p class="subtitle">基于 OCR 和 NLP 的知识库检索</p>
-    </header>
+  <div class="page-container-narrow search-page">
+    <!-- 未登录提示 -->
+    <div v-if="!isLoggedIn" class="empty-state" style="margin-top: var(--space-8)">
+      <div class="empty-icon">🔒</div>
+      <p class="empty-text">请先登录</p>
+      <p class="empty-tip">登录后即可搜索您的学习资料</p>
+      <el-button type="primary" @click="goLogin">去登录</el-button>
+    </div>
 
-    <!-- 搜索区域 -->
-    <section class="search-section">
-      <div class="search-box">
-        <input 
-          v-model="keyword" 
-          class="search-input"
-          placeholder="输入关键词搜索知识点（如：链表、排序、算法）..." 
-          @keyup.enter="search"
-        />
-        <select v-model="mode" class="search-select">
-          <option value="all">🔥 综合</option>
-          <option value="keyword">🏷️ 标签</option>
-          <option value="text">📝 全文</option>
-        </select>
-        <button 
-          @click="search" 
-          class="search-btn" 
-          :disabled="loading"
-        >
-          {{ loading ? '搜索中...' : '搜索' }}
-        </button>
-      </div>
-    </section>
+    <template v-else>
+      <!-- 头部 -->
+      <header class="page-header-center">
+        <h1 class="page-title-large">🔍 智能资料搜索</h1>
+        <p class="page-subtitle">基于 OCR 和 NLP 的知识库检索</p>
+      </header>
 
-    <!-- 结果区域 -->
-    <main v-if="searched" class="results-section">
-      <!-- 结果头部 -->
-      <div class="results-meta">
-        <span class="results-count">
-          找到 <strong>{{ total }}</strong> 条相关结果
-        </span>
-        <span class="mode-tag">{{ modeText }}</span>
-      </div>
+      <!-- 搜索区域 -->
+      <section class="search-section">
+        <div class="search-box">
+          <input
+            v-model="keyword"
+            class="search-input"
+            placeholder="输入关键词搜索知识点（如：链表、排序、算法）..."
+            @keyup.enter="search"
+          />
+          <select v-model="mode" class="search-select">
+            <option value="all">🔥 综合</option>
+            <option value="keyword">🏷️ 标签</option>
+            <option value="text">📝 全文</option>
+          </select>
+          <button
+            @click="search"
+            class="btn-primary search-btn"
+            :disabled="loading"
+          >
+            {{ loading ? '搜索中...' : '搜索' }}
+          </button>
+        </div>
+      </section>
 
-      <!-- 空状态 -->
-      <div v-if="results.length === 0" class="empty-state">
-        <div class="empty-icon">📭</div>
-        <p class="empty-text">未找到相关资料</p>
-        <span class="empty-tip">试试其他关键词，或上传新资料</span>
-      </div>
+      <!-- 结果区域 -->
+      <main v-if="searched" class="results-section">
+        <!-- 结果头部 -->
+        <div class="results-meta">
+          <span class="results-count">
+            找到 <strong>{{ total }}</strong> 条相关结果
+          </span>
+          <span class="mode-tag">{{ modeText }}</span>
+        </div>
 
-      <!-- 结果列表 -->
-      <div v-else class="results-list">
-        <article 
-          v-for="item in results" 
-          :key="item.id" 
-          class="result-card"
-        >
-          <!-- 卡片头部 -->
-          <header class="card-header">
-            <span class="file-icon">{{ getFileIcon(item.fileType) }}</span>
-            <div class="file-info">
-              <h3 class="filename">{{ item.filename }}</h3>
-              <time class="upload-time">{{ formatTime(item.createdAt) }}</time>
+        <!-- 空状态 -->
+        <div v-if="results.length === 0" class="empty-state empty-state-flat">
+          <div class="empty-icon">📭</div>
+          <p class="empty-text">未找到相关资料</p>
+          <span class="empty-tip">试试其他关键词，或上传新资料</span>
+        </div>
+
+        <!-- 结果列表 -->
+        <div v-else class="results-list">
+          <article
+            v-for="item in results"
+            :key="item.id"
+            class="result-card"
+          >
+            <!-- 卡片头部 -->
+            <header class="result-header">
+              <span class="file-icon">{{ getFileIcon(item.fileType) }}</span>
+              <div class="file-info">
+                <h3 class="filename">{{ item.filename }}</h3>
+                <time class="upload-time">{{ formatTime(item.createdAt) }}</time>
+              </div>
+              <span
+                class="confidence-badge"
+                :class="getConfidenceClass(item.ocrConfidence)"
+              >
+                {{ (item.ocrConfidence * 100).toFixed(0) }}%
+              </span>
+            </header>
+
+            <!-- 关键词 -->
+            <div class="keywords-row">
+              <span
+                v-for="kw in item.keywords?.split(',')"
+                :key="kw"
+                class="keyword-tag"
+              >
+                {{ kw.trim() }}
+              </span>
+              <span v-if="!item.keywords" class="no-keywords">暂无关键词</span>
             </div>
-            <span 
-              class="confidence-badge"
-              :class="getConfidenceClass(item.ocrConfidence)"
-            >
-              {{ (item.ocrConfidence * 100).toFixed(0) }}%
-            </span>
-          </header>
 
-          <!-- 关键词 -->
-          <div class="keywords-row">
-            <span 
-              v-for="kw in item.keywords?.split(',')" 
-              :key="kw" 
-              class="keyword-tag"
-            >
-              {{ kw.trim() }}
-            </span>
-            <span v-if="!item.keywords" class="no-keywords">暂无关键词</span>
-          </div>
+            <!-- 摘要 -->
+            <p class="summary-text">{{ item.summary }}</p>
 
-          <!-- 摘要 -->
-          <p class="summary-text">{{ item.summary }}</p>
+            <!-- 底部操作 -->
+            <footer class="result-footer">
+              <span class="status-badge" :class="item.status">
+                {{ getStatusText(item.status) }}
+              </span>
+              <div class="result-actions">
+                <button class="btn-ghost view-btn" @click="viewDetail(item.id)">
+                  查看详情 →
+                </button>
+                <button class="btn-ghost delete-btn" @click="handleDelete(item.id)">
+                  🗑️ 删除
+                </button>
+              </div>
+            </footer>
+          </article>
+        </div>
 
-          <!-- 底部操作 -->
-          <footer class="card-footer">
-            <span class="status-badge" :class="item.status">
-              {{ getStatusText(item.status) }}
-            </span>
-            <button class="view-btn" @click="viewDetail(item.id)">
-              查看详情
-            </button>
-          </footer>
-        </article>
-      </div>
-
-      <!-- 分页 -->
-      <nav v-if="totalPages > 1" class="pagination">
-        <button 
-          v-for="page in totalPages" 
-          :key="page"
-          @click="goToPage(page - 1)"
-          :class="['page-btn', { active: currentPage === page - 1 }]"
-        >
-          {{ page }}
-        </button>
-      </nav>
-    </main>
+        <!-- 分页 -->
+        <nav v-if="totalPages > 1" class="pagination">
+          <button
+            v-for="page in totalPages"
+            :key="page"
+            @click="goToPage(page - 1)"
+            :class="['page-btn', { active: currentPage === page - 1 }]"
+          >
+            {{ page }}
+          </button>
+        </nav>
+      </main>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { search as searchApi } from '@/api/search'
+import { deleteMaterial } from '@/api/material'
+import { ElMessage, ElMessageBox } from 'element-plus'
+
+const router = useRouter()
+const isLoggedIn = computed(() => !!localStorage.getItem('token'))
+
+function goLogin() {
+  router.push('/login')
+}
 
 // 状态
 const keyword = ref('')
@@ -137,17 +163,19 @@ const modeText = computed(() => {
 // 搜索
 const search = async () => {
   if (!keyword.value.trim()) return
-  
+
   loading.value = true
   searched.value = true
   currentPage.value = 0
-  
+
   try {
-    const response = await fetch(
-      `/api/search?keyword=${encodeURIComponent(keyword.value)}&mode=${mode.value}&page=0&size=10`
-    )
-    const data = await response.json()
-    
+    const data = await searchApi({
+      keyword: keyword.value,
+      mode: mode.value,
+      page: 0,
+      size: 10
+    })
+
     if (data.success) {
       results.value = data.items
       total.value = data.total
@@ -165,13 +193,15 @@ const search = async () => {
 const goToPage = async (page: number) => {
   currentPage.value = page
   loading.value = true
-  
+
   try {
-    const response = await fetch(
-      `/api/search?keyword=${encodeURIComponent(keyword.value)}&mode=${mode.value}&page=${page}&size=10`
-    )
-    const data = await response.json()
-    
+    const data = await searchApi({
+      keyword: keyword.value,
+      mode: mode.value,
+      page,
+      size: 10
+    })
+
     if (data.success) {
       results.value = data.items
     }
@@ -212,102 +242,90 @@ const formatTime = (time: string) => {
 }
 
 const viewDetail = (id: number) => {
-  alert(`查看详情功能开发中... ID: ${id}`)
+  router.push(`/materials/${id}`)
+}
+
+const handleDelete = async (id: number) => {
+  try {
+    await ElMessageBox.confirm('确定要删除这份资料吗？', '确认删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    const res = await deleteMaterial(id)
+    if (res.code === 200) {
+      ElMessage.success('删除成功')
+      // 刷新当前列表
+      await search()
+    } else {
+      ElMessage.error(res.msg || '删除失败')
+    }
+  } catch (err: any) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.response?.data?.msg || '删除失败')
+    }
+  }
 }
 </script>
 
 <style scoped>
-/* 页面容器 */
-.search-page {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 40px 20px;
-  min-height: 100vh;
-  background: #f5f7fa;
-}
-
-/* 头部 */
-.page-header {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.title {
-  font-size: 32px;
-  color: #1a1a1a;
-  margin: 0 0 8px 0;
-  font-weight: 600;
-}
-
-.subtitle {
-  color: #666;
-  font-size: 16px;
-  margin: 0;
-}
-
 /* 搜索区域 */
 .search-section {
-  margin-bottom: 32px;
+  margin-bottom: var(--space-6);
 }
 
 .search-box {
-  background: white;
-  padding: 24px;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  background: var(--bg-card);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   max-width: 700px;
   margin: 0 auto;
 }
 
 .search-input {
   flex: 1;
-  padding: 12px 16px;
-  border: 2px solid #e4e7ed;
-  border-radius: 8px;
-  font-size: 15px;
-  transition: all 0.3s;
+  padding: var(--space-3) var(--space-4);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  transition: all 0.2s ease;
   min-width: 0;
+  background: var(--bg-hover);
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #409eff;
+  border-color: var(--primary-500);
   box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1);
+  background: var(--bg-card);
+}
+
+.search-input::placeholder {
+  color: var(--text-tertiary);
 }
 
 .search-select {
-  padding: 12px;
-  border: 2px solid #e4e7ed;
-  border-radius: 8px;
-  background: white;
+  padding: var(--space-3);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
   cursor: pointer;
-  font-size: 14px;
-  color: #606266;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  transition: border-color 0.2s ease;
+}
+
+.search-select:focus {
+  outline: none;
+  border-color: var(--primary-500);
 }
 
 .search-btn {
-  padding: 12px 28px;
-  background: #409eff;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 15px;
-  cursor: pointer;
-  transition: all 0.3s;
   white-space: nowrap;
-}
-
-.search-btn:hover:not(:disabled) {
-  background: #66b1ff;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
-}
-
-.search-btn:disabled {
-  background: #a0cfff;
-  cursor: not-allowed;
 }
 
 /* 结果区域 */
@@ -319,83 +337,58 @@ const viewDetail = (id: number) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding: 0 4px;
+  margin-bottom: var(--space-5);
+  padding: 0 var(--space-1);
 }
 
 .results-count {
-  color: #606266;
-  font-size: 14px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
 .results-count strong {
-  color: #409eff;
-  font-size: 18px;
-  margin: 0 4px;
+  color: var(--primary-500);
+  font-size: var(--text-lg);
+  margin: 0 var(--space-1);
 }
 
 .mode-tag {
-  background: #ecf5ff;
-  color: #409eff;
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-size: 12px;
-  border: 1px solid #d9ecff;
+  background: var(--primary-50);
+  color: var(--primary-500);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border: 1px solid var(--primary-100);
 }
 
-/* 空状态 */
-.empty-state {
-  text-align: center;
-  padding: 80px 20px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
-}
-
-.empty-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-  opacity: 0.6;
-}
-
-.empty-text {
-  color: #606266;
-  font-size: 16px;
-  margin: 0 0 8px 0;
-}
-
-.empty-tip {
-  color: #909399;
-  font-size: 14px;
-}
-
-/* 结果卡片 */
+/* 结果列表 */
 .results-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .result-card {
-  background: white;
-  border: 1px solid #ebeef5;
-  border-radius: 12px;
-  padding: 20px;
-  transition: all 0.3s;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  transition: all 0.2s ease;
 }
 
 .result-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-md);
   transform: translateY(-2px);
-  border-color: #d9ecff;
+  border-color: var(--primary-200);
 }
 
 /* 卡片头部 */
-.card-header {
+.result-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
 .file-icon {
@@ -409,9 +402,9 @@ const viewDetail = (id: number) => {
 }
 
 .filename {
-  font-size: 16px;
-  color: #303133;
-  margin: 0 0 6px 0;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  margin: 0 0 var(--space-1);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -419,61 +412,63 @@ const viewDetail = (id: number) => {
 }
 
 .upload-time {
-  font-size: 13px;
-  color: #909399;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
 }
 
 .confidence-badge {
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 13px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .confidence-badge.high {
-  background: #f0f9eb;
-  color: #67c23a;
+  background: var(--success-50);
+  color: var(--success-500);
 }
 
 .confidence-badge.medium {
-  background: #fdf6ec;
-  color: #e6a23c;
+  background: var(--warning-50);
+  color: var(--warning-500);
 }
 
 .confidence-badge.low {
-  background: #fef0f0;
-  color: #f56c6c;
+  background: var(--danger-50);
+  color: var(--danger-500);
 }
 
 /* 关键词 */
 .keywords-row {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .keyword-tag {
-  background: #ecf5ff;
-  color: #409eff;
-  padding: 4px 10px;
-  border-radius: 16px;
-  font-size: 12px;
-  border: 1px solid #d9ecff;
+  background: var(--primary-50);
+  color: var(--primary-500);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border: 1px solid var(--primary-100);
 }
 
 .no-keywords {
-  color: #c0c4cc;
-  font-size: 13px;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
   font-style: italic;
 }
 
 /* 摘要 */
 .summary-text {
-  color: #606266;
-  font-size: 14px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
   line-height: 1.6;
-  margin: 0 0 16px 0;
+  margin: 0 0 var(--space-4);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -481,85 +476,63 @@ const viewDetail = (id: number) => {
 }
 
 /* 卡片底部 */
-.card-footer {
+.result-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 12px;
-  border-top: 1px solid #ebeef5;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-color);
 }
 
 .status-badge {
-  font-size: 13px;
-  padding: 4px 10px;
-  border-radius: 4px;
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
 }
 
 .status-badge.completed {
-  background: #f0f9eb;
-  color: #67c23a;
+  background: var(--success-50);
+  color: var(--success-500);
+}
+
+.status-badge.processing {
+  background: var(--warning-50);
+  color: var(--warning-500);
+}
+
+.status-badge.uploaded {
+  background: var(--gray-100);
+  color: var(--text-tertiary);
+}
+
+.result-actions {
+  display: flex;
+  gap: var(--space-2);
 }
 
 .view-btn {
-  padding: 6px 16px;
-  background: white;
-  border: 1px solid #dcdfe6;
-  color: #606266;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.3s;
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
 }
 
-.view-btn:hover {
-  color: #409eff;
-  border-color: #c6e2ff;
-  background: #ecf5ff;
+.delete-btn {
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--danger-500);
 }
 
-/* 分页 */
-.pagination {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 32px;
-}
-
-.page-btn {
-  padding: 8px 16px;
-  border: 1px solid #dcdfe6;
-  background: white;
-  color: #606266;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.3s;
-  min-width: 40px;
-}
-
-.page-btn:hover:not(.active) {
-  border-color: #409eff;
-  color: #409eff;
-}
-
-.page-btn.active {
-  background: #409eff;
-  color: white;
-  border-color: #409eff;
+.delete-btn:hover {
+  background: var(--danger-50);
 }
 
 /* 响应式适配 */
 @media (max-width: 768px) {
-  .search-page {
-    padding: 20px 16px;
-  }
-
-  .title {
-    font-size: 24px;
-  }
-
   .search-box {
     flex-direction: column;
-    padding: 16px;
+    padding: var(--space-4);
   }
 
   .search-select {
@@ -572,7 +545,7 @@ const viewDetail = (id: number) => {
 
   .results-meta {
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
     align-items: flex-start;
   }
 }

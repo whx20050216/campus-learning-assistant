@@ -1,21 +1,23 @@
 <template>
-  <div class="plan-detail" v-if="plan">
+  <div class="page-container plan-detail" v-if="plan">
     <div class="header-actions">
-      <el-button @click="goBack">← 返回列表</el-button>
+      <el-button class="back-btn" @click="goBack">
+        <span class="back-icon">←</span> 返回列表
+      </el-button>
     </div>
 
     <div class="info-card">
       <h1 class="plan-title">{{ plan.name }}</h1>
       <p class="plan-desc">{{ plan.description || '暂无描述' }}</p>
       <div class="info-row">
-        <span>📅 {{ plan.startDate }} ~ {{ plan.endDate }}</span>
-        <span>⏱️ 每日 {{ plan.dailyHours }} 小时</span>
-        <span>📖 共 {{ plan.totalPages }} 页</span>
-        <el-tag :type="statusType(plan.status)">{{ statusLabel(plan.status) }}</el-tag>
+        <span class="info-item">📅 {{ plan.startDate }} ~ {{ plan.endDate }}</span>
+        <span class="info-item">⏱️ 每日 {{ plan.dailyHours }} 小时</span>
+        <span class="info-item">📖 共 {{ plan.totalPages }} 页</span>
+        <el-tag :type="statusType(plan.status)" size="small">{{ statusLabel(plan.status) }}</el-tag>
       </div>
       <div class="progress-row">
         <span class="progress-label">总进度</span>
-        <el-progress :percentage="Math.round(plan.progress || 0)" :status="progressStatus(plan.status)" style="flex: 1" />
+        <el-progress :percentage="Math.round(plan.progress || 0)" :status="progressStatus(plan.status)" :stroke-width="10" style="flex: 1" />
         <span class="progress-value">{{ (plan.progress || 0).toFixed(1) }}%</span>
       </div>
     </div>
@@ -42,7 +44,7 @@
             </div>
           </div>
           <div class="task-actions">
-            <el-tag v-if="task.status === 'completed'" type="success">已完成</el-tag>
+            <el-tag v-if="task.status === 'completed'" type="success" size="small">已完成</el-tag>
             <el-button
               v-else
               type="primary"
@@ -57,13 +59,13 @@
     </div>
 
     <!-- 打卡弹窗 -->
-    <el-dialog v-model="checkInVisible" title="学习打卡" width="400px">
-      <el-form :model="checkInForm" label-width="80px">
+    <el-dialog v-model="checkInVisible" title="学习打卡" width="420px">
+      <el-form :model="checkInForm" label-width="90px">
         <el-form-item label="学习时长">
           <el-input-number v-model="checkInForm.duration" :min="1" :max="480" placeholder="分钟" style="width: 100%" />
         </el-form-item>
         <el-form-item label="学习内容">
-          <el-input v-model="checkInForm.content" type="textarea" placeholder="简要记录今日学习内容" />
+          <el-input v-model="checkInForm.content" type="textarea" :rows="3" placeholder="简要记录今日学习内容" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -139,14 +141,14 @@ const chartOption = computed(() => {
         type: 'bar',
         stack: 'total',
         data: completedData,
-        itemStyle: { color: '#67c23a' },
+        itemStyle: { color: '#67c23a', borderRadius: [4, 4, 0, 0] },
       },
       {
         name: '未完成',
         type: 'bar',
         stack: 'total',
         data: pendingData,
-        itemStyle: { color: '#e6a23c' },
+        itemStyle: { color: '#e6a23c', borderRadius: [4, 4, 0, 0] },
       },
     ],
   }
@@ -224,109 +226,149 @@ watch(() => route.params.id, load)
 </script>
 
 <style scoped>
-.plan-detail {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
 .header-actions {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.back-icon {
+  font-size: var(--text-lg);
+}
+
 .info-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
 }
+
 .plan-title {
-  font-size: 22px;
-  font-weight: 600;
-  margin: 0 0 8px;
-  color: #303133;
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  margin: 0 0 var(--space-2);
+  color: var(--text-primary);
+  line-height: 1.3;
 }
+
 .plan-desc {
-  color: #606266;
-  margin: 0 0 16px;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  line-height: 1.6;
 }
+
 .info-row {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: var(--space-5);
   flex-wrap: wrap;
-  margin-bottom: 16px;
-  color: #606266;
-  font-size: 14px;
+  margin-bottom: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .progress-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-color);
 }
+
 .progress-label {
-  font-weight: 500;
-  color: #303133;
-}
-.progress-value {
   font-weight: 600;
-  color: #409eff;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.progress-value {
+  font-weight: 700;
+  color: var(--primary-500);
   min-width: 60px;
   text-align: right;
+  font-size: var(--text-lg);
 }
+
 .chart-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
 }
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0 0 16px;
-  color: #303133;
-}
+
 .chart {
   width: 100%;
   height: 320px;
 }
+
 .task-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
 }
+
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
 }
+
 .task-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  border-radius: 8px;
-  background: #f5f7fa;
-  transition: background 0.3s;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--bg-hover);
+  transition: background 0.2s ease;
+  gap: var(--space-4);
 }
+
+.task-item:hover {
+  background: var(--gray-200);
+}
+
 .task-item.completed {
-  background: #f0f9eb;
+  background: var(--success-50);
 }
+
+.task-item.completed:hover {
+  background: var(--success-50);
+}
+
 .task-name {
-  font-weight: 500;
-  color: #303133;
-  margin-bottom: 4px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+  font-size: var(--text-base);
 }
+
 .task-meta {
-  font-size: 13px;
-  color: #909399;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
 }
-.loading-state {
-  text-align: center;
-  padding: 60px;
-  color: #909399;
+
+.task-actions {
+  flex-shrink: 0;
 }
 </style>

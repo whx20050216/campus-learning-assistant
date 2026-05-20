@@ -44,7 +44,32 @@ const router = createRouter({
       name: 'Admin',
       component: () => import('../views/AdminView.vue')
     },
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('../views/LoginView.vue')
+    },
+    {
+      path: '/profile',
+      name: 'profile',
+      component: () => import('../views/ProfileView.vue')
+    },
+    {
+      path: '/materials/:id',
+      name: 'MaterialDetail',
+      component: () => import('../views/MaterialDetailView.vue')
+    },
   ],
+})
+
+router.beforeEach((to, from, next) => {
+  const token = localStorage.getItem('token')
+  const publicPaths = ['/login', '/about']
+  if (!token && !publicPaths.includes(to.path) && to.path !== '/') {
+    next('/login')
+  } else {
+    next()
+  }
 })
 
 export default router

@@ -13,6 +13,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
@@ -31,6 +32,9 @@ public class AdminController {
 
     @Autowired
     private RestTemplate restTemplate;
+
+    @Value("${python.api.url:http://python-app:8000}")
+    private String pythonApiUrl;
 
     private <T> Result<T> checkAdmin() {
         Long userId = CurrentUserUtils.getCurrentUserId();
@@ -124,7 +128,7 @@ public class AdminController {
         vo.setActivePlans(studyPlanMapper.selectCount(new QueryWrapper<StudyPlan>().eq("status", "active")));
         vo.setJavaStatus("UP");
         try {
-            restTemplate.getForObject("http://python-app:8000/health", String.class);
+            restTemplate.getForObject(pythonApiUrl + "/health", String.class);
             vo.setPythonStatus("UP");
         } catch (Exception e) {
             vo.setPythonStatus("DOWN");

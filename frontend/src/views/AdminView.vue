@@ -1,5 +1,5 @@
 <template>
-  <div class="admin-view">
+  <div class="page-container admin-view">
     <h1 class="page-title">⚙️ 系统管理</h1>
 
     <div v-if="loading && !users.length && activeTab === 'users'" class="loading-state">加载中...</div>
@@ -31,11 +31,11 @@
       </div>
 
       <!-- Tabs -->
-      <el-tabs v-model="activeTab" @tab-change="onTabChange">
+      <el-tabs v-model="activeTab" @tab-change="onTabChange" class="admin-tabs">
         <el-tab-pane label="用户管理" name="users">
           <div class="table-section">
             <h2 class="section-title">用户列表</h2>
-            <el-table :data="users" v-loading="loading" border>
+            <el-table :data="users" v-loading="loading" border stripe>
               <el-table-column prop="studentNo" label="学号" min-width="120" />
               <el-table-column prop="username" label="用户名" min-width="120" />
               <el-table-column prop="email" label="邮箱" min-width="180" />
@@ -43,12 +43,12 @@
               <el-table-column prop="grade" label="年级" min-width="100" />
               <el-table-column prop="role" label="角色" min-width="100">
                 <template #default="{ row }">
-                  <el-tag :type="row.role === 'admin' ? 'danger' : 'info'">{{ row.role }}</el-tag>
+                  <el-tag :type="row.role === 'admin' ? 'danger' : 'info'" size="small">{{ row.role }}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="status" label="状态" min-width="100">
                 <template #default="{ row }">
-                  <el-tag :type="row.status === 1 ? 'success' : 'warning'">{{ row.status === 1 ? '正常' : '已冻结' }}</el-tag>
+                  <el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small">{{ row.status === 1 ? '正常' : '已冻结' }}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column label="操作" min-width="120" fixed="right">
@@ -80,7 +80,7 @@
         <el-tab-pane label="内容审核" name="materials">
           <div class="table-section">
             <h2 class="section-title">待审核资料</h2>
-            <el-table :data="pendingMaterials" v-loading="pendingLoading" border>
+            <el-table :data="pendingMaterials" v-loading="pendingLoading" border stripe>
               <el-table-column prop="id" label="ID" min-width="80" />
               <el-table-column prop="title" label="资料标题" min-width="200" />
               <el-table-column prop="userId" label="上传者ID" min-width="120" />
@@ -259,66 +259,41 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.admin-view {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0 0 24px;
-}
-.loading-state {
-  text-align: center;
-  padding: 60px;
-  color: #909399;
-}
 .card-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
-.stat-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-.stat-label {
-  font-size: 14px;
-  color: #606266;
-  margin-bottom: 8px;
-}
-.stat-value {
-  font-size: 32px;
-  font-weight: 700;
-  color: #303133;
-  margin-bottom: 8px;
-}
+
 .service-status {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
+
 .table-section {
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
 }
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0 0 16px;
-}
+
 .pagination-wrapper {
-  margin-top: 16px;
+  margin-top: var(--space-4);
   display: flex;
   justify-content: flex-end;
+}
+
+/* Tabs 样式微调 */
+.admin-tabs :deep(.el-tabs__header) {
+  margin-bottom: var(--space-4);
+}
+
+.admin-tabs :deep(.el-tabs__nav-wrap::after) {
+  height: 1px;
+  background: var(--border-color);
 }
 </style>

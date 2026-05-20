@@ -1,8 +1,16 @@
 <template>
-  <div class="analysis-view">
+  <div class="page-container analysis-view">
     <h1 class="page-title">📊 数据分析仪表盘</h1>
 
-    <div v-if="loading" class="loading-state">加载中...</div>
+    <!-- 未登录提示 -->
+    <div v-if="!isLoggedIn" class="empty-state">
+      <div class="empty-icon">🔒</div>
+      <p class="empty-text">请先登录</p>
+      <p class="empty-tip">登录后即可查看您的学习数据分析</p>
+      <el-button type="primary" @click="goLogin">去登录</el-button>
+    </div>
+
+    <div v-else-if="loading" class="loading-state">加载中...</div>
 
     <div v-else-if="dashboard" class="dashboard">
       <!-- 时长对比卡片 -->
@@ -39,7 +47,7 @@
                 <span class="progress-name">{{ item.name }}</span>
                 <span class="progress-percent">{{ (item.progress || 0).toFixed(1) }}%</span>
               </div>
-              <el-progress :percentage="Math.round(item.progress || 0)" />
+              <el-progress :percentage="Math.round(item.progress || 0)" :stroke-width="8" />
             </div>
           </div>
           <div v-else class="empty-chart">暂无进行中的计划</div>
@@ -51,6 +59,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { PieChart } from 'echarts/charts'
@@ -60,9 +69,15 @@ import { usePlanStore } from '@/stores/plan'
 
 use([CanvasRenderer, PieChart, TooltipComponent, LegendComponent])
 
+const router = useRouter()
 const store = usePlanStore()
 const dashboard = computed(() => store.dashboardData)
 const loading = ref(store.loading)
+const isLoggedIn = computed(() => !!localStorage.getItem('token'))
+
+function goLogin() {
+  router.push('/login')
+}
 
 const pieOption = computed(() => {
   const data = dashboard.value?.courseDistribution || []
@@ -133,109 +148,88 @@ function formatDuration(minutes: number) {
 }
 
 onMounted(() => {
-  store.fetchDashboard()
+  if (isLoggedIn.value) {
+    store.fetchDashboard()
+  }
 })
 </script>
 
 <style scoped>
-.analysis-view {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-.page-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0 0 24px;
-}
-.loading-state {
-  text-align: center;
-  padding: 60px;
-  color: #909399;
-}
 .card-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
-.stat-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-.stat-label {
-  font-size: 14px;
-  color: #606266;
-  margin-bottom: 8px;
-}
-.stat-value {
-  font-size: 32px;
-  font-weight: 700;
-  color: #303133;
-  margin-bottom: 8px;
-}
-.stat-compare {
-  font-size: 14px;
-}
-.compare-up {
-  color: #67c23a;
-}
-.compare-down {
-  color: #f56c6c;
-}
-.compare-neutral {
-  color: #909399;
-}
+
 .chart-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
+
 .chart-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
 }
+
 .card-title {
-  font-size: 16px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: #303133;
-  margin: 0 0 16px;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-4);
 }
+
 .pie-chart {
   width: 100%;
   height: 320px;
 }
+
 .empty-chart {
-  text-align: center;
-  padding: 60px 20px;
-  color: #909399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12) var(--space-4);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
 }
+
 .progress-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
 }
+
 .progress-item {
-  background: #f5f7fa;
-  border-radius: 8px;
-  padding: 12px 16px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
 }
+
 .progress-header {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
+
 .progress-name {
-  font-weight: 500;
-  color: #303133;
-}
-.progress-percent {
-  color: #409eff;
   font-weight: 600;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.progress-percent {
+  color: var(--primary-500);
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 768px) {
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

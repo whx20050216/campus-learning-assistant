@@ -1,7 +1,10 @@
 <template>
   <div class="app">
     <nav class="navbar">
-      <div class="nav-brand">📚 校园智能学习助手</div>
+      <div class="nav-brand">
+        <span class="nav-brand-icon">📚</span>
+        <span>校园智能学习助手</span>
+      </div>
       <div class="nav-links">
         <RouterLink to="/" class="nav-link">首页</RouterLink>
         <RouterLink to="/upload" class="nav-link">📤 上传资料</RouterLink>
@@ -10,8 +13,16 @@
         <RouterLink to="/analysis" class="nav-link">📊 数据分析</RouterLink>
         <RouterLink v-if="isAdmin" to="/admin" class="nav-link">⚙️ 系统管理</RouterLink>
       </div>
+      <div class="nav-user">
+        <template v-if="currentUser">
+          <RouterLink to="/profile" class="nav-link" style="padding: var(--space-1) var(--space-3);">👤 个人中心</RouterLink>
+          <span class="user-name">👋 {{ currentUser.username }}</span>
+          <el-button type="primary" link size="small" @click="logout">退出</el-button>
+        </template>
+        <RouterLink v-else to="/login" class="login-btn">登录 / 注册</RouterLink>
+      </div>
     </nav>
-    
+
     <main class="main-content">
       <RouterView />
     </main>
@@ -21,8 +32,12 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
 import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import { getCurrentUser } from '@/api/auth'
+import type { UserVO } from '@/api/auth'
 
 const isAdmin = ref(false)
+const currentUser = ref<UserVO | null>(null)
 
 function checkAdmin() {
   const token = localStorage.getItem('token')
@@ -39,87 +54,152 @@ function checkAdmin() {
   }
 }
 
+async function fetchUserInfo() {
+  const token = localStorage.getItem('token')
+  if (!token) {
+    currentUser.value = null
+    isAdmin.value = false
+    return
+  }
+  try {
+    const res = await getCurrentUser()
+    if (res.code === 200) {
+      currentUser.value = res.data
+      isAdmin.value = res.data?.role === 'admin'
+    } else {
+      currentUser.value = null
+      isAdmin.value = false
+    }
+  } catch {
+    currentUser.value = null
+    isAdmin.value = false
+  }
+}
+
+function logout() {
+  localStorage.removeItem('token')
+  currentUser.value = null
+  isAdmin.value = false
+  ElMessage.success('已退出登录')
+  window.location.reload()
+}
+
 onMounted(() => {
-  isAdmin.value = checkAdmin()
+  fetchUserInfo()
+})
+
+// 监听登录状态变化（从 LoginView 触发）
+window.addEventListener('auth-change', () => {
+  fetchUserInfo()
 })
 </script>
 
-<style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html, body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: #f5f7fa;
-  width: 100%;
-  height: 100%;
-}
-
-/* 关键修复：确保整体布局占满宽度 */
+<style scoped>
 .app {
   width: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--bg-body);
 }
 
+/* 导航栏 */
 .navbar {
-  background: white;
-  padding: 0 40px;
-  height: 64px;
+  background: var(--bg-card);
+  padding: 0 var(--space-6);
+  height: var(--navbar-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 0;
   z-index: 100;
-  flex-shrink: 0; /* 防止导航栏被压缩 */
+  flex-shrink: 0;
 }
 
 .nav-brand {
-  font-size: 20px;
-  font-weight: bold;
-  color: #409eff;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--primary-500);
+  white-space: nowrap;
+}
+
+.nav-brand-icon {
+  font-size: var(--text-xl);
 }
 
 .nav-links {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1;
+  justify-content: center;
 }
 
 .nav-link {
   text-decoration: none;
-  color: #606266;
-  padding: 8px 16px;
-  border-radius: 6px;
-  transition: all 0.3s;
-  font-size: 15px;
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+  font-size: var(--text-md);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .nav-link:hover {
-  color: #409eff;
-  background: #f0f9ff;
+  color: var(--primary-500);
+  background: var(--bg-primary-subtle);
 }
 
 .nav-link.router-link-active {
-  color: #409eff;
-  background: #ecf5ff;
+  color: var(--primary-500);
+  background: var(--bg-primary-subtle);
+  font-weight: 600;
+}
+
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.user-name {
+  color: var(--text-primary);
   font-weight: 500;
 }
 
-/* 关键修复：内容区占满剩余宽度和高度 */
+.login-btn {
+  text-decoration: none;
+  color: var(--text-on-primary);
+  background: var(--primary-500);
+  padding: 6px var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+
+.login-btn:hover {
+  background: var(--primary-600);
+  text-decoration: none;
+}
+
+/* 内容区 */
 .main-content {
   flex: 1;
   width: 100%;
   max-width: 100%;
-  min-height: calc(100vh - 64px);
-  display: block; /* 覆盖可能继承的 flex 设置 */
+  min-height: calc(100vh - var(--navbar-height));
 }
-#app {
+
+/* 覆盖 #app 的默认样式 */
+:global(#app) {
   display: flex !important;
   flex-direction: column;
   grid-template-columns: none !important;
@@ -127,5 +207,29 @@ html, body {
   width: 100%;
   margin: 0 !important;
   padding: 0 !important;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .navbar {
+    padding: 0 var(--space-4);
+    flex-wrap: wrap;
+    height: auto;
+    min-height: var(--navbar-height);
+    gap: var(--space-2);
+  }
+
+  .nav-links {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: var(--space-2);
+  }
+
+  .nav-link {
+    font-size: var(--text-sm);
+    padding: var(--space-1) var(--space-2);
+  }
 }
 </style>

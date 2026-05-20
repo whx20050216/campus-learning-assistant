@@ -2,6 +2,7 @@ package com.campus.learning.service;
 
 import com.campus.learning.entity.Material;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -18,7 +19,9 @@ import java.util.Map;
 public class AiEngineService {
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final String PYTHON_API = "http://localhost:8000";
+
+    @Value("${python.api.url:http://localhost:8000}")
+    private String pythonApiUrl;
 
     /**
      * 调用 Python OCR 服务
@@ -47,7 +50,7 @@ public class AiEngineService {
             log.info("调用 Python OCR 服务，文件: {}", filename);
 
             ResponseEntity<Map> response = restTemplate.postForEntity(
-                    PYTHON_API + "/ai/ocr",
+                    pythonApiUrl + "/ai/ocr",
                     request,
                     Map.class
             );
@@ -91,7 +94,7 @@ public class AiEngineService {
             log.info("调用 Python NLP 服务，文本长度: {}", text.length());
 
             ResponseEntity<Map> response = restTemplate.postForEntity(
-                    PYTHON_API + "/ai/nlp",
+                    pythonApiUrl + "/ai/nlp",
                     request,
                     Map.class
             );

@@ -1,47 +1,62 @@
 <template>
-  <div class="plan-view">
+  <div class="page-container plan-view">
     <div class="page-header">
-      <h1 class="title">📋 学习计划</h1>
-      <el-button type="primary" @click="openCreateDialog">+ 新建计划</el-button>
+      <h1 class="page-title">📋 学习计划</h1>
+      <el-button v-if="isLoggedIn" type="primary" @click="openCreateDialog">+ 新建计划</el-button>
     </div>
 
-    <div v-if="loading" class="loading-state">加载中...</div>
+    <!-- 未登录提示 -->
+    <div v-if="!isLoggedIn" class="empty-state">
+      <div class="empty-icon">🔒</div>
+      <p class="empty-text">请先登录</p>
+      <p class="empty-tip">登录后即可查看和管理您的学习计划</p>
+      <el-button type="primary" @click="goLogin">去登录</el-button>
+    </div>
 
-    <div v-else-if="planList.length === 0" class="empty-state">
+    <div v-else-if="loading" class="loading-state">加载中...</div>
+
+    <div v-else-if="planList.length === 0" class="empty-state empty-state-flat">
       <div class="empty-icon">📚</div>
       <p class="empty-text">暂无学习计划</p>
+      <p class="empty-tip">创建您的第一个学习计划，开始高效学习之旅</p>
       <el-button type="primary" @click="openCreateDialog">创建第一个计划</el-button>
     </div>
 
-    <div v-else class="plan-list">
+    <div v-else class="plan-grid">
       <div
         v-for="plan in planList"
         :key="plan.id"
-        class="plan-card"
+        class="plan-card card-hover"
         @click="goDetail(plan.id)"
       >
         <div class="plan-header">
           <h3 class="plan-name">{{ plan.name }}</h3>
-          <el-tag :type="statusType(plan.status)">{{ statusLabel(plan.status) }}</el-tag>
+          <el-tag :type="statusType(plan.status)" size="small">{{ statusLabel(plan.status) }}</el-tag>
         </div>
         <div class="plan-meta">
-          <span>📅 截止日期：{{ plan.endDate }}</span>
-          <span>📖 总页数：{{ plan.totalPages }} 页</span>
+          <span class="meta-item">
+            <span class="meta-icon">📅</span>
+            <span>截止 {{ plan.endDate }}</span>
+          </span>
+          <span class="meta-item">
+            <span class="meta-icon">📖</span>
+            <span>{{ plan.totalPages }} 页</span>
+          </span>
         </div>
         <div class="plan-progress">
-          <el-progress :percentage="Math.round(plan.progress || 0)" :status="progressStatus(plan.status)" />
+          <el-progress :percentage="Math.round(plan.progress || 0)" :status="progressStatus(plan.status)" :stroke-width="8" />
         </div>
       </div>
     </div>
 
     <!-- 新建计划弹窗 -->
-    <el-dialog v-model="dialogVisible" title="新建学习计划" width="520px">
-      <el-form :model="form" label-width="100px">
+    <el-dialog v-model="dialogVisible" title="新建学习计划" width="560px" class="plan-dialog">
+      <el-form :model="form" label-width="100px" class="plan-form">
         <el-form-item label="计划名称">
           <el-input v-model="form.name" placeholder="例如：期末复习计划" />
         </el-form-item>
         <el-form-item label="计划描述">
-          <el-input v-model="form.description" type="textarea" placeholder="可选" />
+          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选，描述计划的目标和内容" />
         </el-form-item>
         <el-form-item label="学习资料">
           <el-select
@@ -77,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { usePlanStore } from '@/stores/plan'
@@ -92,6 +107,8 @@ const loading = ref(store.loading)
 const dialogVisible = ref(false)
 const submitting = ref(false)
 const materials = ref<MaterialVO[]>([])
+
+const isLoggedIn = computed(() => !!localStorage.getItem('token'))
 
 const form = ref({
   name: '',
@@ -190,84 +207,83 @@ function goDetail(id: number) {
   router.push(`/plans/${id}`)
 }
 
+function goLogin() {
+  router.push('/login')
+}
+
 onMounted(() => {
-  store.fetchPlanList()
+  if (isLoggedIn.value) {
+    store.fetchPlanList()
+  }
 })
 </script>
 
 <style scoped>
-.plan-view {
-  padding: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-.title {
-  font-size: 24px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0;
-}
-.loading-state {
-  text-align: center;
-  padding: 40px;
-  color: #909399;
-}
-.empty-state {
-  text-align: center;
-  padding: 80px 20px;
-  background: #fff;
-  border-radius: 12px;
-}
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-}
-.empty-text {
-  color: #606266;
-  margin-bottom: 16px;
-}
-.plan-list {
+.plan-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
+
 .plan-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
   cursor: pointer;
-  transition: box-shadow 0.3s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
 }
+
 .plan-card:hover {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: transparent;
 }
+
 .plan-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  margin-bottom: var(--space-3);
+  gap: var(--space-2);
 }
+
 .plan-name {
-  font-size: 18px;
+  font-size: var(--text-lg);
   font-weight: 600;
   margin: 0;
-  color: #303133;
+  color: var(--text-primary);
+  line-height: 1.4;
+  word-break: break-all;
 }
+
 .plan-meta {
   display: flex;
-  gap: 16px;
-  color: #606266;
-  font-size: 14px;
-  margin-bottom: 12px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
 }
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.meta-icon {
+  opacity: 0.7;
+}
+
 .plan-progress {
-  margin-top: 8px;
+  margin-top: var(--space-2);
+}
+
+/* 弹窗表单 */
+.plan-form :deep(.el-form-item__label) {
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 </style>
