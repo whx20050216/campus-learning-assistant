@@ -26,7 +26,7 @@ public class SearchServiceImpl implements SearchService {
     private KeywordMapper keywordMapper;
 
     @Override
-    public Page<SearchResultVO> searchByKeyword(String keyword, int page, int size) {
+    public Page<SearchResultVO> searchByKeyword(String keyword, int page, int size, Long userId) {
         if (keyword == null || keyword.trim().isEmpty()) {
             return new Page<>();
         }
@@ -42,52 +42,76 @@ public class SearchServiceImpl implements SearchService {
 
         Page<SearchResultVO> mpPage = new Page<>(page + 1, size);
         try {
-            return materialMapper.searchByFulltext(cleanKeyword, mpPage);
+            return materialMapper.searchByFulltext(cleanKeyword, mpPage, userId);
         } catch (Exception e) {
-            log.error("全文检索失败: {}", e.getMessage());
-            // 降级为 LIKE 模糊匹配
-            Page<Material> materialPage = new Page<>(page + 1, size);
-            QueryWrapper<Material> wrapper = new QueryWrapper<>();
-            wrapper.like("title", cleanKeyword).or().like("course_tag", cleanKeyword);
-            Page<Material> result = materialMapper.selectPage(materialPage, wrapper);
-            Page<SearchResultVO> voPage = new Page<>();
-            voPage.setTotal(result.getTotal());
-            voPage.setPages(result.getPages());
-            voPage.setCurrent(result.getCurrent());
-            voPage.setSize(result.getSize());
-            List<SearchResultVO> records = result.getRecords().stream().map(m -> {
-                SearchResultVO vo = new SearchResultVO();
-                vo.setId(m.getId());
-                vo.setTitle(m.getTitle());
-                vo.setCourseTag(m.getCourseTag());
-                vo.setSource(m.getSource());
-                vo.setCreatedAt(m.getCreatedAt());
-                return vo;
-            }).collect(Collectors.toList());
-            voPage.setRecords(records);
+            log.error("全文检索失败，降级为 LIKE 模糊匹配: {}", e.getMessage());
+            List<SearchResultVO> records = materialMapper.searchByLike(cleanKeyword, userId);
+            Page<SearchResultVO> voPage = new Page<>(page + 1, size);
+            int total = records.size();
+            int pages = (int) Math.ceil((double) total / size);
+            voPage.setTotal(total);
+            voPage.setPages(pages);
+            voPage.setCurrent(page + 1);
+            voPage.setSize(size);
+            // 内存分页
+            int fromIndex = Math.min(page * size, total);
+            int toIndex = Math.min(fromIndex + size, total);
+            voPage.setRecords(records.subList(fromIndex, toIndex));
             return voPage;
         }
     }
 
     @Override
-    public List<SearchResultVO> searchByKnowledge(String keyword) {
+    public List<SearchResultVO> searchByKnowledge(String keyword, Long userId) {
         if (keyword == null || keyword.trim().isEmpty()) {
             return Collections.emptyList();
         }
-        List<Long> materialIds = keywordMapper.findMaterialIdsByKeyword(keyword.trim());
+        List<Long> materialIds = keywordMapper.findMaterialIdsByKeyword(keyword.trim(), userId);
         if (materialIds == null || materialIds.isEmpty()) {
             return Collections.emptyList();
         }
-        return materialMapper.findByIds(materialIds);
+        return materialMapper.findByIds(materialIds, userId);
     }
 
     @Override
-    public List<SearchResultVO> searchByCourse(String courseTag) {
+    public Page<SearchResultVO> searchAll(String query, int page, int size, Long userId) {
+        // 综合模式：先尝试关键词全文检索，如果结果为空则降级到知识点匹配
+        Page<SearchResultVO> result = searchByKeyword(query, page, size, userId);
+        if (result == null || result.getRecords() == null || result.getRecords().isEmpty()) {
+            List<SearchResultVO> knowledgeResults = searchByKnowledge(query, userId);
+            if (knowledgeResults != null && !knowledgeResults.isEmpty()) {
+                Page<SearchResultVO> voPage = new Page<>();
+                voPage.setRecords(knowledgeResults);
+                voPage.setTotal(knowledgeResults.size());
+                voPage.setPages(1);
+                voPage.setCurrent(page + 1);
+                voPage.setSize(size);
+                return voPage;
+            }
+            // 如果知识点多为空，尝试按课程标签匹配
+            List<SearchResultVO> courseResults = searchByCourse(query, userId);
+            if (courseResults != null && !courseResults.isEmpty()) {
+                Page<SearchResultVO> voPage = new Page<>();
+                voPage.setRecords(courseResults);
+                voPage.setTotal(courseResults.size());
+                voPage.setPages(1);
+                voPage.setCurrent(page + 1);
+                voPage.setSize(size);
+                return voPage;
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public List<SearchResultVO> searchByCourse(String courseTag, Long userId) {
         if (courseTag == null || courseTag.trim().isEmpty()) {
             return Collections.emptyList();
         }
         QueryWrapper<Material> wrapper = new QueryWrapper<>();
-        wrapper.eq("course_tag", courseTag.trim());
+        wrapper.eq("user_id", userId);
+        wrapper.like("course_tag", courseTag.trim());
+        wrapper.isNull("deleted_at");
         wrapper.orderByDesc("created_at");
         List<Material> materials = materialMapper.selectList(wrapper);
         return materials.stream().map(m -> {

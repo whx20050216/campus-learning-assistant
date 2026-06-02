@@ -13,4 +13,5 @@ public class OcrResultVO {
     private String summary;
     private Integer processingTimeMs;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

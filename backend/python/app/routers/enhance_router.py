@@ -23,7 +23,7 @@ def get_decider() -> DualTrackDecider:
 async def ai_enhance(request: EnhanceRequest):
     """
     低置信度时调用智谱 API 进行增强。
-    接收 file_path 或 image_base64，返回增强文本。
+    接收 file_path 或 image_base64，返回增强文本及深度摘要。
     """
     d = get_decider()
 
@@ -37,6 +37,7 @@ async def ai_enhance(request: EnhanceRequest):
         return EnhanceResponse(
             source=result["source"],
             text=result.get("text"),
+            summary=result.get("summary"),
             engine=result.get("engine")
         )
     except Exception as e:

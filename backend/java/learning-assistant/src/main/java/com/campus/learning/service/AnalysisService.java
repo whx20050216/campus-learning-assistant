@@ -5,5 +5,5 @@ import com.campus.learning.vo.DashboardVO;
 
 public interface AnalysisService {
 
-    Result<DashboardVO> getDashboard(Long userId);
+    Result<DashboardVO> getDashboard(Long userId, String timeRange);
 }

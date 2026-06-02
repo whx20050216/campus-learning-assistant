@@ -14,8 +14,15 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
+
+import java.io.File;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryUsage;
+import java.text.DecimalFormat;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -33,13 +40,16 @@ public class AdminController {
     @Autowired
     private RestTemplate restTemplate;
 
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
     @Value("${python.api.url:http://python-app:8000}")
     private String pythonApiUrl;
 
     private <T> Result<T> checkAdmin() {
         Long userId = CurrentUserUtils.getCurrentUserId();
         User user = userMapper.selectById(userId);
-        if (user == null || !"admin".equals(user.getRole())) {
+        if (user == null || !"ADMIN".equals(user.getRole())) {
             return Result.error(403, "无权限");
         }
         return null;
@@ -71,7 +81,9 @@ public class AdminController {
             return checkResult;
         }
         Page<User> pageParam = new Page<>(page, size);
-        QueryWrapper<User> wrapper = new QueryWrapper<User>().orderByDesc("created_at");
+        QueryWrapper<User> wrapper = new QueryWrapper<User>()
+                .eq("role", "STUDENT")
+                .orderByDesc("created_at");
         Page<User> userPage = userMapper.selectPage(pageParam, wrapper);
         return Result.success(userPage);
     }
@@ -126,14 +138,74 @@ public class AdminController {
         vo.setTotalUsers(userMapper.selectCount(null));
         vo.setTodayUploads(materialMapper.selectCount(new QueryWrapper<Material>().apply("DATE(created_at) = CURDATE()")));
         vo.setActivePlans(studyPlanMapper.selectCount(new QueryWrapper<StudyPlan>().eq("status", "active")));
-        vo.setJavaStatus("UP");
+
+        // 1. Java 状态：通过 JVM 内存使用率探测
+        try {
+            MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
+            MemoryUsage heapUsage = memoryMXBean.getHeapMemoryUsage();
+            long used = heapUsage.getUsed();
+            long max = heapUsage.getMax();
+            double usagePercent = max > 0 ? (double) used / max * 100 : 0;
+            if (usagePercent > 90) {
+                vo.setJavaStatus("WARNING");
+            } else {
+                vo.setJavaStatus("UP");
+            }
+        } catch (Exception e) {
+            vo.setJavaStatus("DOWN");
+        }
+
+        // 2. Python 状态
         try {
             restTemplate.getForObject(pythonApiUrl + "/health", String.class);
             vo.setPythonStatus("UP");
         } catch (Exception e) {
             vo.setPythonStatus("DOWN");
         }
-        vo.setDbStatus("UP");
+
+        // 3. DB 状态：执行 SELECT 1
+        try {
+            userMapper.selectCount(new QueryWrapper<User>().last("LIMIT 1"));
+            vo.setDbStatus("UP");
+        } catch (Exception e) {
+            vo.setDbStatus("DOWN");
+        }
+
+        // 4. Redis 状态：执行 PING
+        try {
+            String pingResult = redisTemplate.execute((org.springframework.data.redis.core.RedisCallback<String>) connection -> {
+                return new String(connection.ping());
+            });
+            if ("PONG".equalsIgnoreCase(pingResult)) {
+                vo.setRedisStatus("UP");
+            } else {
+                vo.setRedisStatus("DOWN");
+            }
+        } catch (Exception e) {
+            vo.setRedisStatus("DOWN");
+        }
+
+        // 5. 磁盘空间：监控根目录 /
+        try {
+            File root = new File("/");
+            long totalSpace = root.getTotalSpace();
+            long usableSpace = root.getUsableSpace();
+            long usedSpace = totalSpace - usableSpace;
+            double usagePercent = totalSpace > 0 ? (double) usedSpace / totalSpace * 100 : 0;
+            DecimalFormat df = new DecimalFormat("0.0");
+            vo.setDiskUsage(df.format(usagePercent) + "%");
+            if (usagePercent > 90) {
+                vo.setDiskStatus("CRITICAL");
+            } else if (usagePercent > 80) {
+                vo.setDiskStatus("WARNING");
+            } else {
+                vo.setDiskStatus("UP");
+            }
+        } catch (Exception e) {
+            vo.setDiskStatus("DOWN");
+            vo.setDiskUsage("未知");
+        }
+
         return Result.success(vo);
     }
 }

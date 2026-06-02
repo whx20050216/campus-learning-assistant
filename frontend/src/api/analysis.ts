@@ -15,8 +15,10 @@ export interface DashboardVO {
   currentProgress: ProgressItem[]
   weeklyDuration: number
   lastWeekDuration: number
+  materialCount: number
 }
 
-export function getDashboard() {
-  return request.get<any, { code: number; msg: string; data: DashboardVO }>('/api/analysis/dashboard')
+export function getDashboard(timeRange?: 'week' | 'month') {
+  const params = timeRange ? `?timeRange=${timeRange}` : ''
+  return request.get<any, { code: number; msg: string; data: DashboardVO }>(`/api/analysis/dashboard${params}`)
 }

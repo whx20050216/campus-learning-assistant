@@ -21,4 +21,5 @@ public class MaterialDetailVO {
 
     private OcrResultVO ocrResult;
     private List<KeywordVO> keywords;
+    private List<KnowledgePointVO> knowledgePoints;
 }

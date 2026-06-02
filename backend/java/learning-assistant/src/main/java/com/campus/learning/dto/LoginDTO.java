@@ -7,4 +7,5 @@ public class LoginDTO {
 
     private String account;
     private String password;
+    private Boolean rememberMe = false;
 }

@@ -39,15 +39,15 @@ class DualTrackDecider:
             text: 已有 OCR 文本
 
         Returns:
-            {"source": "local" | "ai_enhanced" | "fallback", "text": str | None}
+            {"source": "local" | "ai_enhanced" | "fallback", "text": str | None, "summary": str | None}
         """
         if confidence > self.threshold:
-            return {"source": "local", "text": None}
+            return {"source": "local", "text": None, "summary": None}
 
         # 低置信度，尝试 API 增强
         if not self.zhipu_available:
             logger.info("智谱 API 不可用，直接 fallback")
-            return {"source": "fallback", "text": None}
+            return {"source": "fallback", "text": None, "summary": None}
 
         # 若未提供 base64 但有文件路径，则读取并编码
         if not image_base64 and file_path:
@@ -57,10 +57,15 @@ class DualTrackDecider:
                     image_base64 = base64.b64encode(f.read()).decode("utf-8")
             except Exception as e:
                 logger.warning(f"读取文件转 base64 失败: {e}")
-                return {"source": "fallback", "text": None}
+                return {"source": "fallback", "text": None, "summary": None}
 
         try:
             enhanced = self.zhipu.enhance(image_base64=image_base64, text=text)
-            return {"source": "ai_enhanced", "text": enhanced, "engine": "zhipu"}
+            return {
+                "source": "ai_enhanced",
+                "text": enhanced.get("text"),
+                "summary": enhanced.get("summary"),
+                "engine": "zhipu"
+            }
         except ZhipuApiException:
-            return {"source": "fallback", "text": None}
+            return {"source": "fallback", "text": None, "summary": None}

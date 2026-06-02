@@ -1,31 +1,67 @@
 <template>
   <div class="page-container admin-view">
-    <h1 class="page-title">⚙️ 系统管理</h1>
+    <div class="page-header-row">
+      <h1 class="page-title-large">系统管理</h1>
+    </div>
 
     <div v-if="loading && !users.length && activeTab === 'users'" class="loading-state">加载中...</div>
     <div v-if="pendingLoading && !pendingMaterials.length && activeTab === 'materials'" class="loading-state">加载中...</div>
 
     <template v-else>
       <!-- 统计卡片 -->
-      <div class="card-row">
-        <div class="stat-card">
-          <div class="stat-label">用户总数</div>
-          <div class="stat-value">{{ status?.totalUsers ?? 0 }}</div>
+      <div class="stat-cards-row">
+        <div class="stat-card" style="--stat-accent: var(--primary-500);">
+          <div class="stat-card-topbar"></div>
+          <div class="stat-card-body">
+            <div class="stat-card-icon">
+              <el-icon><User /></el-icon>
+            </div>
+            <div class="stat-card-content">
+              <div class="stat-card-value">{{ status?.totalUsers ?? 0 }}</div>
+              <div class="stat-card-label">用户总数</div>
+            </div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">今日上传数</div>
-          <div class="stat-value">{{ status?.todayUploads ?? 0 }}</div>
+        <div class="stat-card" style="--stat-accent: var(--success-500);">
+          <div class="stat-card-topbar"></div>
+          <div class="stat-card-body">
+            <div class="stat-card-icon" style="color: var(--success-500);">
+              <el-icon><Upload /></el-icon>
+            </div>
+            <div class="stat-card-content">
+              <div class="stat-card-value">{{ status?.todayUploads ?? 0 }}</div>
+              <div class="stat-card-label">今日上传</div>
+            </div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">活跃计划数</div>
-          <div class="stat-value">{{ status?.activePlans ?? 0 }}</div>
+        <div class="stat-card" style="--stat-accent: var(--warning-500);">
+          <div class="stat-card-topbar"></div>
+          <div class="stat-card-body">
+            <div class="stat-card-icon" style="color: var(--warning-500);">
+              <el-icon><Calendar /></el-icon>
+            </div>
+            <div class="stat-card-content">
+              <div class="stat-card-value">{{ status?.activePlans ?? 0 }}</div>
+              <div class="stat-card-label">活跃计划</div>
+            </div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">服务状态</div>
-          <div class="service-status">
-            <el-tag :type="status?.javaStatus === 'UP' ? 'success' : 'danger'" size="small">Java {{ status?.javaStatus }}</el-tag>
-            <el-tag :type="status?.pythonStatus === 'UP' ? 'success' : 'danger'" size="small">Python {{ status?.pythonStatus }}</el-tag>
-            <el-tag :type="status?.dbStatus === 'UP' ? 'success' : 'danger'" size="small">DB {{ status?.dbStatus }}</el-tag>
+        <div class="stat-card" style="--stat-accent: var(--primary-400);">
+          <div class="stat-card-topbar"></div>
+          <div class="stat-card-body">
+            <div class="stat-card-icon" style="color: var(--primary-400);">
+              <el-icon><Monitor /></el-icon>
+            </div>
+            <div class="stat-card-content">
+              <div class="stat-card-services">
+                <el-tag :type="status?.javaStatus === 'UP' ? 'success' : (status?.javaStatus === 'WARNING' ? 'warning' : 'danger')" size="small" effect="light">Java</el-tag>
+                <el-tag :type="status?.pythonStatus === 'UP' ? 'success' : 'danger'" size="small" effect="light">Python</el-tag>
+                <el-tag :type="status?.dbStatus === 'UP' ? 'success' : 'danger'" size="small" effect="light">DB</el-tag>
+                <el-tag :type="status?.redisStatus === 'UP' ? 'success' : 'danger'" size="small" effect="light">Redis</el-tag>
+                <el-tag :type="status?.diskStatus === 'UP' ? 'success' : (status?.diskStatus === 'WARNING' || status?.diskStatus === 'CRITICAL' ? 'warning' : 'danger')" size="small" effect="light">磁盘 {{ status?.diskUsage || '' }}</el-tag>
+              </div>
+              <div class="stat-card-label">系统状态</div>
+            </div>
           </div>
         </div>
       </div>
@@ -34,8 +70,13 @@
       <el-tabs v-model="activeTab" @tab-change="onTabChange" class="admin-tabs">
         <el-tab-pane label="用户管理" name="users">
           <div class="table-section">
-            <h2 class="section-title">用户列表</h2>
-            <el-table :data="users" v-loading="loading" border stripe>
+            <div class="section-header">
+              <h2 class="section-title">
+                <el-icon><UserFilled /></el-icon>
+                用户列表
+              </h2>
+            </div>
+            <el-table :data="users" v-loading="loading" border stripe class="admin-table">
               <el-table-column prop="studentNo" label="学号" min-width="120" />
               <el-table-column prop="username" label="用户名" min-width="120" />
               <el-table-column prop="email" label="邮箱" min-width="180" />
@@ -43,12 +84,15 @@
               <el-table-column prop="grade" label="年级" min-width="100" />
               <el-table-column prop="role" label="角色" min-width="100">
                 <template #default="{ row }">
-                  <el-tag :type="row.role === 'admin' ? 'danger' : 'info'" size="small">{{ row.role }}</el-tag>
+                  <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'info'" size="small" effect="light">{{ row.role }}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="status" label="状态" min-width="100">
                 <template #default="{ row }">
-                  <el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small">{{ row.status === 1 ? '正常' : '已冻结' }}</el-tag>
+                  <div class="status-dot-row">
+                    <span class="status-dot" :class="row.status === 1 ? 'active' : 'frozen'"></span>
+                    <span>{{ row.status === 1 ? '正常' : '已冻结' }}</span>
+                  </div>
                 </template>
               </el-table-column>
               <el-table-column label="操作" min-width="120" fixed="right">
@@ -56,6 +100,8 @@
                   <el-button
                     :type="row.status === 1 ? 'warning' : 'success'"
                     size="small"
+                    link
+                    :icon="row.status === 1 ? Lock : Unlock"
                     @click="handleFreeze(row)"
                     :disabled="row.id === currentUserId"
                   >
@@ -79,20 +125,40 @@
 
         <el-tab-pane label="内容审核" name="materials">
           <div class="table-section">
-            <h2 class="section-title">待审核资料</h2>
-            <el-table :data="pendingMaterials" v-loading="pendingLoading" border stripe>
-              <el-table-column prop="id" label="ID" min-width="80" />
-              <el-table-column prop="title" label="资料标题" min-width="200" />
-              <el-table-column prop="userId" label="上传者ID" min-width="120" />
-              <el-table-column prop="fileType" label="类型" min-width="100" />
-              <el-table-column prop="createdAt" label="上传时间" min-width="180" />
-              <el-table-column label="操作" min-width="200" fixed="right">
-                <template #default="{ row }">
-                  <el-button type="success" size="small" @click="handleAudit(row, 'approve')">通过</el-button>
-                  <el-button type="danger" size="small" @click="handleAudit(row, 'reject')">拒绝</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
+            <div class="section-header">
+              <h2 class="section-title">
+                <el-icon><DocumentChecked /></el-icon>
+                待审核资料
+              </h2>
+            </div>
+            <div v-if="pendingMaterials.length" class="audit-card-grid">
+              <div v-for="row in pendingMaterials" :key="row.id" class="audit-card">
+                <div class="audit-card-header">
+                  <el-icon class="audit-card-icon" :size="28"><component :is="getFileIcon(row.fileType)" /></el-icon>
+                  <div class="audit-card-info">
+                    <div class="audit-card-title">{{ row.title }}</div>
+                    <div class="audit-card-meta">
+                      <span>上传者 ID: {{ row.userId }}</span>
+                      <span class="meta-sep">·</span>
+                      <span>{{ row.fileType }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="audit-card-time">
+                  <el-icon><Clock /></el-icon>
+                  <span>{{ formatTime(row.createdAt) }}</span>
+                </div>
+                <div class="audit-card-actions">
+                  <el-button type="success" size="small" :icon="CircleCheck" @click="handleAudit(row, 'approve')">
+                    通过
+                  </el-button>
+                  <el-button type="danger" size="small" :icon="CircleClose" @click="handleAudit(row, 'reject')">
+                    拒绝
+                  </el-button>
+                </div>
+              </div>
+            </div>
+            <el-empty v-else description="暂无待审核资料" />
 
             <div class="pagination-wrapper">
               <el-pagination
@@ -111,12 +177,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  User, Upload, Calendar, Monitor,
+  UserFilled, DocumentChecked, Clock,
+  Lock, Unlock, CircleCheck, CircleClose,
+  Document, Picture, Link
+} from '@element-plus/icons-vue'
 import { getUsers, freezeUser, getSystemStatus, getPendingMaterials, auditMaterial } from '@/api/admin'
-import type { User, SystemStatusVO, Material } from '@/api/admin'
+import type { User as UserType, SystemStatusVO, Material } from '@/api/admin'
 
-const users = ref<User[]>([])
+const users = ref<UserType[]>([])
 const status = ref<SystemStatusVO | null>(null)
 const loading = ref(false)
 const page = ref(1)
@@ -144,6 +216,20 @@ function parseCurrentUser() {
   } catch {
     // ignore
   }
+}
+
+function getFileIcon(type?: string) {
+  const icons: Record<string, any> = {
+    'PDF': Document,
+    'IMAGE': Picture,
+    'PPT': Document,
+  }
+  return icons[type?.toUpperCase() || ''] || Link
+}
+
+function formatTime(time?: string) {
+  if (!time) return '-'
+  return new Date(time).toLocaleString('zh-CN')
 }
 
 async function fetchUsers() {
@@ -191,7 +277,7 @@ async function fetchStatus() {
   }
 }
 
-async function handleFreeze(row: User) {
+async function handleFreeze(row: UserType) {
   const freeze = row.status === 1
   const actionText = freeze ? '冻结' : '解冻'
 
@@ -251,28 +337,127 @@ function onTabChange(tabName: string | number) {
   }
 }
 
+let statusTimer: ReturnType<typeof setInterval> | null = null
+
 onMounted(() => {
   parseCurrentUser()
   fetchUsers()
   fetchStatus()
+  statusTimer = setInterval(() => {
+    fetchStatus()
+  }, 30000)
+})
+
+onUnmounted(() => {
+  if (statusTimer) {
+    clearInterval(statusTimer)
+    statusTimer = null
+  }
 })
 </script>
 
 <style scoped>
-.card-row {
+.page-header-row {
+  margin-bottom: var(--space-6);
+}
+
+.page-title-large {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* 统计卡片 */
+.stat-cards-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4);
   margin-bottom: var(--space-6);
 }
 
-.service-status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+@media (max-width: 1200px) {
+  .stat-cards-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
+@media (max-width: 768px) {
+  .stat-cards-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.stat-card-topbar {
+  height: 4px;
+  background: var(--stat-accent);
+}
+
+.stat-card-body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.stat-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--bg-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--primary-500);
+  flex-shrink: 0;
+}
+
+.stat-card-icon .el-icon {
+  font-size: 24px;
+}
+
+.stat-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-card-value {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+  margin-bottom: var(--space-1);
+}
+
+.stat-card-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.stat-card-services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+/* 表格区域 */
 .table-section {
   background: var(--bg-card);
   border-radius: var(--radius-lg);
@@ -281,19 +466,144 @@ onMounted(() => {
   border: 1px solid var(--border-color);
 }
 
+.section-header {
+  margin-bottom: var(--space-4);
+}
+
+.section-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* 状态 dot */
+.status-dot-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.active {
+  background: var(--success-500);
+}
+
+.status-dot.frozen {
+  background: var(--danger-500);
+}
+
+/* 审核卡片网格 */
+.audit-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.audit-card {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  transition: all 0.2s ease;
+}
+
+.audit-card:hover {
+  border-color: var(--primary-300);
+  box-shadow: var(--shadow-sm);
+}
+
+.audit-card-header {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.audit-card-icon {
+  font-size: 36px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.audit-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.audit-card-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-card-meta {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.meta-sep {
+  opacity: 0.5;
+}
+
+.audit-card-time {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.audit-card-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
 .pagination-wrapper {
   margin-top: var(--space-4);
   display: flex;
   justify-content: flex-end;
 }
 
-/* Tabs 样式微调 */
+/* Tabs 样式 */
 .admin-tabs :deep(.el-tabs__header) {
   margin-bottom: var(--space-4);
 }
 
 .admin-tabs :deep(.el-tabs__nav-wrap::after) {
-  height: 1px;
+  height: 2px;
   background: var(--border-color);
+}
+
+.admin-tabs :deep(.el-tabs__active-bar) {
+  height: 3px;
+}
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12);
+  color: var(--text-secondary);
 }
 </style>

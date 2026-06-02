@@ -3,6 +3,7 @@ package com.campus.learning.service.Impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.campus.learning.dto.CheckInDTO;
 import com.campus.learning.dto.PlanCreateDTO;
+import com.campus.learning.dto.PlanUpdateDTO;
 import com.campus.learning.dto.Result;
 import com.campus.learning.entity.Material;
 import com.campus.learning.entity.StudyPlan;
@@ -13,6 +14,8 @@ import com.campus.learning.mapper.StudyPlanMapper;
 import com.campus.learning.mapper.StudyRecordMapper;
 import com.campus.learning.mapper.StudyTaskMapper;
 import com.campus.learning.service.PlanService;
+import com.campus.learning.vo.MaterialVO;
+import com.campus.learning.vo.PlanReminderVO;
 import com.campus.learning.vo.PlanVO;
 import com.campus.learning.vo.TaskVO;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +29,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -109,27 +113,7 @@ public class PlanServiceImpl implements PlanService {
         studyPlanMapper.insert(plan);
 
         // 6. 生成 StudyTask
-        List<StudyTask> tasks = new ArrayList<>();
-        LocalDate currentDate = dto.getStartDate();
-        int dayIndex = 0;
-        while (!currentDate.isAfter(dto.getEndDate())) {
-            StudyTask task = new StudyTask();
-            task.setPlanId(plan.getId());
-            // 关联第一个资料作为代表（或循环分配，这里简化取第一个）
-            task.setMaterialId(dto.getMaterialIds().get(dayIndex % dto.getMaterialIds().size()));
-            task.setTaskName("第" + dayIndex + "天学习任务");
-            task.setTaskDate(currentDate);
-            task.setPlannedHours(plan.getDailyHours());
-            task.setStatus("pending");
-            task.setVersion(0);
-            task.setCreatedAt(LocalDateTime.now());
-            task.setUpdatedAt(LocalDateTime.now());
-            studyTaskMapper.insert(task);
-            tasks.add(task);
-
-            currentDate = currentDate.plusDays(1);
-            dayIndex++;
-        }
+        List<StudyTask> tasks = generateTasks(plan, dto.getMaterialIds(), dto.getStartDate(), dto.getEndDate());
 
         PlanVO vo = convertToPlanVO(plan, tasks);
         return Result.success(vo);
@@ -152,11 +136,16 @@ public class PlanServiceImpl implements PlanService {
             return Result.error("无权操作该任务");
         }
 
+        LocalDate studyDate = dto.getStudyDate() != null ? dto.getStudyDate() : LocalDate.now();
+        if (studyDate.isAfter(LocalDate.now())) {
+            return Result.error("不能补录未来日期的学习记录");
+        }
+
         // 创建学习记录
         StudyRecord record = new StudyRecord();
         record.setTaskId(taskId);
         record.setUserId(userId);
-        record.setStudyDate(LocalDate.now());
+        record.setStudyDate(studyDate);
         record.setDuration(dto.getDuration());
         record.setContent(dto.getContent());
         record.setCheckInType("manual");
@@ -246,6 +235,170 @@ public class PlanServiceImpl implements PlanService {
         return Result.success(vos);
     }
 
+    @Transactional
+    @Override
+    public Result<Void> deletePlan(Long planId, Long userId) {
+        StudyPlan plan = studyPlanMapper.selectById(planId);
+        if (plan == null) {
+            return Result.error("计划不存在");
+        }
+        if (!plan.getUserId().equals(userId)) {
+            return Result.error(403, "无权删除该计划");
+        }
+        // 级联删除学习记录
+        QueryWrapper<StudyRecord> recordWrapper = new QueryWrapper<>();
+        recordWrapper.eq("task_id", planId);
+        List<StudyTask> tasks = studyTaskMapper.findByPlanIdOrderByTaskDateAsc(planId);
+        for (StudyTask task : tasks) {
+            QueryWrapper<StudyRecord> rw = new QueryWrapper<>();
+            rw.eq("task_id", task.getId());
+            studyRecordMapper.delete(rw);
+        }
+        // 级联删除学习任务
+        QueryWrapper<StudyTask> taskWrapper = new QueryWrapper<>();
+        taskWrapper.eq("plan_id", planId);
+        studyTaskMapper.delete(taskWrapper);
+        // 删除计划
+        studyPlanMapper.deleteById(planId);
+        return Result.success();
+    }
+
+    @Transactional
+    @Override
+    public Result<PlanVO> updatePlan(Long planId, PlanUpdateDTO dto, Long userId) {
+        StudyPlan plan = studyPlanMapper.selectById(planId);
+        if (plan == null) {
+            return Result.error("计划不存在");
+        }
+        if (!plan.getUserId().equals(userId)) {
+            return Result.error(403, "无权操作该计划");
+        }
+
+        boolean shouldRegenerate = false;
+        List<Long> materialIds = dto.getMaterialIds();
+
+        // 更新名称
+        if (dto.getName() != null) {
+            plan.setName(dto.getName().trim());
+        }
+
+        // 更新每日时长
+        if (dto.getDailyHours() != null) {
+            if (dto.getDailyHours() < 0.5f) {
+                return Result.error("每日学习时长不能少于0.5小时");
+            }
+            plan.setDailyHours(dto.getDailyHours());
+        }
+
+        // 如果修改了截止日期
+        if (dto.getEndDate() != null) {
+            LocalDate today = LocalDate.now();
+            if (dto.getEndDate().isBefore(today)) {
+                return Result.error("结束日期不能早于今天");
+            }
+            if (plan.getStartDate() != null && plan.getStartDate().isAfter(dto.getEndDate())) {
+                return Result.error("开始日期不能晚于结束日期");
+            }
+            plan.setEndDate(dto.getEndDate());
+            plan.setRemindDate(dto.getEndDate().minusDays(3));
+            shouldRegenerate = true;
+        }
+
+        // 如果传了 materialIds
+        if (materialIds != null && !materialIds.isEmpty()) {
+            shouldRegenerate = true;
+        }
+
+        if (shouldRegenerate) {
+            // 确定 materialIds
+            if (materialIds == null || materialIds.isEmpty()) {
+                // 从旧任务中提取
+                List<StudyTask> oldTasks = studyTaskMapper.findByPlanIdOrderByTaskDateAsc(planId);
+                materialIds = oldTasks.stream()
+                        .map(StudyTask::getMaterialId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .collect(Collectors.toList());
+                if (materialIds.isEmpty()) {
+                    return Result.error("无法获取原资料信息，请重新选择资料");
+                }
+            }
+
+            // 重新计算总页数
+            int totalPages = 0;
+            List<Material> materials = materialMapper.selectBatchIds(materialIds);
+            for (Material material : materials) {
+                if (material.getPages() != null && material.getPages() > 0) {
+                    totalPages += material.getPages();
+                } else if (material.getFileSize() != null && material.getFileSize() > 0) {
+                    long mb = material.getFileSize() / (1024 * 1024);
+                    if (mb == 0) {
+                        mb = 1;
+                    }
+                    totalPages += (int) (mb * 10);
+                } else {
+                    totalPages += 10;
+                }
+            }
+            plan.setTotalPages(totalPages);
+
+            // 删除旧任务
+            QueryWrapper<StudyTask> taskWrapper = new QueryWrapper<>();
+            taskWrapper.eq("plan_id", planId);
+            studyTaskMapper.delete(taskWrapper);
+
+            // 重新生成任务
+            List<StudyTask> tasks = generateTasks(plan, materialIds, plan.getStartDate(), plan.getEndDate());
+            plan.setUpdatedAt(LocalDateTime.now());
+            studyPlanMapper.updateById(plan);
+
+            PlanVO vo = convertToPlanVO(plan, tasks);
+            return Result.success(vo);
+        } else {
+            // 只更新 plan 字段，如果 dailyHours 变了也更新所有任务的 plannedHours
+            if (dto.getDailyHours() != null) {
+                QueryWrapper<StudyTask> taskWrapper = new QueryWrapper<>();
+                taskWrapper.eq("plan_id", planId);
+                List<StudyTask> tasks = studyTaskMapper.selectList(taskWrapper);
+                for (StudyTask task : tasks) {
+                    task.setPlannedHours(plan.getDailyHours());
+                    task.setUpdatedAt(LocalDateTime.now());
+                    studyTaskMapper.updateById(task);
+                }
+            }
+            plan.setUpdatedAt(LocalDateTime.now());
+            studyPlanMapper.updateById(plan);
+
+            List<StudyTask> tasks = studyTaskMapper.findByPlanIdOrderByTaskDateAsc(planId);
+            PlanVO vo = convertToPlanVO(plan, tasks);
+            return Result.success(vo);
+        }
+    }
+
+    private List<StudyTask> generateTasks(StudyPlan plan, List<Long> materialIds, LocalDate startDate, LocalDate endDate) {
+        List<StudyTask> tasks = new ArrayList<>();
+        LocalDate currentDate = startDate;
+        int dayIndex = 0;
+        while (!currentDate.isAfter(endDate)) {
+            StudyTask task = new StudyTask();
+            task.setPlanId(plan.getId());
+            task.setMaterialId(materialIds.get(dayIndex % materialIds.size()));
+            task.setTaskName("第" + dayIndex + "天学习任务");
+            task.setTaskDate(currentDate);
+            task.setPlannedHours(plan.getDailyHours());
+            task.setStatus("pending");
+            task.setVersion(0);
+            task.setCreatedAt(LocalDateTime.now());
+            task.setUpdatedAt(LocalDateTime.now());
+            studyTaskMapper.insert(task);
+            tasks.add(task);
+
+            currentDate = currentDate.plusDays(1);
+            dayIndex++;
+        }
+        return tasks;
+    }
+
     private PlanVO convertToPlanVO(StudyPlan plan, List<StudyTask> tasks) {
         PlanVO vo = new PlanVO();
         BeanUtils.copyProperties(plan, vo);
@@ -257,7 +410,56 @@ public class PlanServiceImpl implements PlanService {
                 return tv;
             }).collect(Collectors.toList());
             vo.setTasks(taskVos);
+
+            // 组装计划包含的资料列表（去重、过滤已删除）
+            List<Long> materialIds = tasks.stream()
+                    .map(StudyTask::getMaterialId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (!materialIds.isEmpty()) {
+                List<Material> materials = materialMapper.selectBatchIds(materialIds);
+                List<MaterialVO> materialVos = materials.stream()
+                        .filter(m -> m.getDeletedAt() == null)
+                        .map(m -> {
+                            MaterialVO mv = new MaterialVO();
+                            BeanUtils.copyProperties(m, mv);
+                            return mv;
+                        })
+                        .collect(Collectors.toList());
+                vo.setMaterials(materialVos);
+            }
         }
         return vo;
+    }
+
+    @Override
+    public Result<List<PlanReminderVO>> getReminders(Long userId) {
+        List<StudyPlan> plans = studyPlanMapper.findReminders(userId);
+        LocalDate today = LocalDate.now();
+        List<PlanReminderVO> vos = plans.stream().map(p -> {
+            PlanReminderVO vo = new PlanReminderVO();
+            vo.setPlanId(p.getId());
+            vo.setPlanName(p.getName());
+            vo.setRemindDate(p.getRemindDate());
+            // daysLeft: 提醒日期到今天的差值（负值表示已过期）
+            vo.setDaysLeft((int) ChronoUnit.DAYS.between(today, p.getRemindDate()));
+            return vo;
+        }).collect(Collectors.toList());
+        return Result.success(vos);
+    }
+
+    @Transactional
+    @Override
+    public Result<Void> markReminderRead(Long planId, Long userId) {
+        StudyPlan plan = studyPlanMapper.selectById(planId);
+        if (plan == null) {
+            return Result.error("计划不存在");
+        }
+        if (!plan.getUserId().equals(userId)) {
+            return Result.error(403, "无权操作该计划");
+        }
+        studyPlanMapper.markReminderRead(planId);
+        return Result.success();
     }
 }

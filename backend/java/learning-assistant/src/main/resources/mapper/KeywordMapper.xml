@@ -7,7 +7,11 @@
     </select>
 
     <select id="findMaterialIdsByKeyword" resultType="java.lang.Long">
-        SELECT DISTINCT material_id FROM keyword WHERE keyword = #{keyword}
+        SELECT DISTINCT k.material_id FROM keyword k
+        JOIN materials m ON k.material_id = m.id
+        WHERE k.keyword LIKE CONCAT('%', #{keyword}, '%')
+          AND m.user_id = #{userId}
+          AND m.deleted_at IS NULL
     </select>
 
 </mapper>

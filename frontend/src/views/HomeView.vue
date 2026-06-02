@@ -1,36 +1,37 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { Upload, Search, Document, TrendCharts, Cpu, Lightning } from '@element-plus/icons-vue'
 
 const router = useRouter()
 
 const features = [
   {
-    icon: '📤',
+    icon: Upload,
     title: '上传资料',
     desc: '支持 PDF、PPT、图片等多种格式，自动进行 OCR 文字识别与知识提取',
     path: '/upload',
-    color: '#409eff'
+    color: '#6366F1'
   },
   {
-    icon: '🔍',
+    icon: Search,
     title: '智能搜索',
     desc: '基于 OCR 和 NLP 的知识库检索，支持关键词、标签、全文多模式搜索',
     path: '/search',
-    color: '#67c23a'
+    color: '#6366F1'
   },
   {
-    icon: '📝',
+    icon: Document,
     title: '学习计划',
     desc: '创建个性化学习计划，跟踪进度，高效管理你的学习资料与任务',
     path: '/plans',
-    color: '#e6a23c'
+    color: '#6366F1'
   },
   {
-    icon: '📊',
+    icon: TrendCharts,
     title: '数据分析',
     desc: '可视化展示学习数据，分析资料分布、学习进度与知识掌握情况',
     path: '/analysis',
-    color: '#f56c6c'
+    color: '#6366F1'
   }
 ]
 
@@ -43,18 +44,24 @@ function goTo(path: string) {
   <div class="home-view">
     <!-- Hero 区域 -->
     <section class="hero-section">
+      <div class="hero-shapes">
+        <div class="hero-shape hero-shape-1"></div>
+        <div class="hero-shape hero-shape-2"></div>
+      </div>
       <div class="hero-content">
-        <h1 class="hero-title">📚 校园智能学习助手</h1>
+        <h1 class="hero-title">校园智能学习助手</h1>
         <p class="hero-subtitle">
           基于 OCR 与 AI 技术的智能化学习资料管理平台<br />
           让知识获取更高效、学习规划更科学
         </p>
         <div class="hero-actions">
           <button class="hero-btn hero-btn-primary" @click="goTo('/upload')">
-            📤 上传资料
+            <el-icon :size="18" style="margin-right: 6px"><Upload /></el-icon>
+            上传资料
           </button>
           <button class="hero-btn hero-btn-secondary" @click="goTo('/search')">
-            🔍 智能搜索
+            <el-icon :size="18" style="margin-right: 6px"><Search /></el-icon>
+            智能搜索
           </button>
         </div>
       </div>
@@ -70,8 +77,8 @@ function goTo(path: string) {
           class="feature-card card-hover"
           @click="goTo(item.path)"
         >
-          <div class="feature-icon" :style="{ background: item.color + '15', color: item.color }">
-            {{ item.icon }}
+          <div class="feature-icon" :style="{ background: 'var(--primary-50)', color: 'var(--primary-500)' }">
+            <el-icon :size="32"><component :is="item.icon" /></el-icon>
           </div>
           <h3 class="feature-title">{{ item.title }}</h3>
           <p class="feature-desc">{{ item.desc }}</p>
@@ -85,17 +92,23 @@ function goTo(path: string) {
     <!-- 特色介绍 -->
     <section class="highlights-section">
       <div class="highlight-item">
-        <div class="highlight-icon">🤖</div>
+        <div class="highlight-icon">
+          <el-icon :size="32"><Cpu /></el-icon>
+        </div>
         <h3>AI 智能识别</h3>
         <p>基于 OCR 技术自动提取 PDF、图片中的文字内容，支持中英文混合识别</p>
       </div>
       <div class="highlight-item">
-        <div class="highlight-icon">⚡</div>
+        <div class="highlight-icon">
+          <el-icon :size="32"><Lightning /></el-icon>
+        </div>
         <h3>极速检索</h3>
         <p>多维度全文检索，秒级返回搜索结果，精准定位知识点</p>
       </div>
       <div class="highlight-item">
-        <div class="highlight-icon">📈</div>
+        <div class="highlight-icon">
+          <el-icon :size="32"><TrendCharts /></el-icon>
+        </div>
         <h3>学习追踪</h3>
         <p>量化分析学习进度，数据驱动，科学规划学习路径</p>
       </div>
@@ -111,10 +124,40 @@ function goTo(path: string) {
 
 /* Hero 区域 */
 .hero-section {
-  background: linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%);
+  background: linear-gradient(135deg, #F8FAFC 0%, #EEF2FF 100%);
   padding: var(--space-16) var(--space-6);
   text-align: center;
-  color: var(--text-on-primary);
+  color: var(--text-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-shapes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.hero-shape {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.08;
+  background: #fff;
+}
+
+.hero-shape-1 {
+  width: 400px;
+  height: 400px;
+  top: -100px;
+  right: -80px;
+}
+
+.hero-shape-2 {
+  width: 300px;
+  height: 300px;
+  bottom: -80px;
+  left: -60px;
 }
 
 .hero-content {
@@ -156,24 +199,26 @@ function goTo(path: string) {
 }
 
 .hero-btn-primary {
-  background: var(--text-on-primary);
-  color: var(--primary-500);
+  background: var(--primary-500);
+  color: var(--text-on-primary);
   box-shadow: var(--shadow-md);
 }
 
 .hero-btn-primary:hover {
+  background: var(--primary-600);
   transform: translateY(-2px);
   box-shadow: var(--shadow-lg);
 }
 
 .hero-btn-secondary {
-  background: rgba(255, 255, 255, 0.15);
-  color: var(--text-on-primary);
-  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1.5px solid var(--border-color);
 }
 
 .hero-btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--bg-hover);
+  border-color: var(--primary-300);
   transform: translateY(-2px);
 }
 
@@ -210,7 +255,7 @@ function goTo(path: string) {
 }
 
 .feature-card:hover {
-  transform: translateY(-6px);
+  transform: translateY(-4px);
   box-shadow: var(--shadow-lg);
   border-color: transparent;
 }
@@ -222,7 +267,6 @@ function goTo(path: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 32px;
   margin: 0 auto var(--space-4);
 }
 
@@ -262,9 +306,15 @@ function goTo(path: string) {
 }
 
 .highlight-icon {
-  font-size: 40px;
-  line-height: 1;
-  margin-bottom: var(--space-3);
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  background: var(--primary-50);
+  color: var(--primary-500);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--space-3);
 }
 
 .highlight-item h3 {

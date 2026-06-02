@@ -2,9 +2,11 @@ package com.campus.learning.controller;
 
 import com.campus.learning.dto.CheckInDTO;
 import com.campus.learning.dto.PlanCreateDTO;
+import com.campus.learning.dto.PlanUpdateDTO;
 import com.campus.learning.dto.Result;
 import com.campus.learning.security.CurrentUserUtils;
 import com.campus.learning.service.PlanService;
+import com.campus.learning.vo.PlanReminderVO;
 import com.campus.learning.vo.PlanVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +31,7 @@ public class PlanController {
         return planService.createPlan(dto, userId);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{id:\\d+}")
     public Result<PlanVO> getPlanDetail(@PathVariable Long id) {
         Long userId = CurrentUserUtils.getCurrentUserId();
         if (userId == null) {
@@ -64,5 +66,41 @@ public class PlanController {
         }
         Float progress = planService.calculateProgress(id);
         return Result.success(progress);
+    }
+
+    @PutMapping("/{id:\\d+}")
+    public Result<PlanVO> updatePlan(@PathVariable Long id, @RequestBody PlanUpdateDTO dto) {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        if (userId == null) {
+            return Result.error(401, "未登录");
+        }
+        return planService.updatePlan(id, dto, userId);
+    }
+
+    @DeleteMapping("/{id}")
+    public Result<Void> deletePlan(@PathVariable Long id) {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        if (userId == null) {
+            return Result.error(401, "未登录");
+        }
+        return planService.deletePlan(id, userId);
+    }
+
+    @GetMapping("/reminders")
+    public Result<List<PlanReminderVO>> getReminders() {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        if (userId == null) {
+            return Result.error(401, "未登录");
+        }
+        return planService.getReminders(userId);
+    }
+
+    @PostMapping("/reminders/{id}/read")
+    public Result<Void> markReminderRead(@PathVariable Long id) {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        if (userId == null) {
+            return Result.error(401, "未登录");
+        }
+        return planService.markReminderRead(id, userId);
     }
 }

@@ -6,9 +6,12 @@ import {
   getPlanDetail as apiGetPlanDetail,
   checkIn as apiCheckIn,
   getProgress as apiGetProgress,
+  getReminders as apiGetReminders,
+  readReminder as apiReadReminder,
+  updatePlan as apiUpdatePlan,
 } from '@/api/plan'
 import { getDashboard as apiGetDashboard } from '@/api/analysis'
-import type { PlanVO, TaskVO, PlanCreateDTO, CheckInDTO } from '@/api/plan'
+import type { PlanVO, TaskVO, PlanCreateDTO, PlanUpdateDTO, CheckInDTO, PlanReminderVO } from '@/api/plan'
 import type { DashboardVO } from '@/api/analysis'
 
 export const usePlanStore = defineStore('plan', () => {
@@ -16,9 +19,11 @@ export const usePlanStore = defineStore('plan', () => {
   const currentPlan = ref<PlanVO | null>(null)
   const taskList = ref<TaskVO[]>([])
   const dashboardData = ref<DashboardVO | null>(null)
+  const reminders = ref<PlanReminderVO[]>([])
   const loading = ref(false)
 
   const activePlans = computed(() => planList.value.filter((p) => p.status === 'active'))
+  const unreadReminderCount = computed(() => reminders.value.length)
 
   async function fetchPlanList() {
     loading.value = true
@@ -53,6 +58,15 @@ export const usePlanStore = defineStore('plan', () => {
     return res
   }
 
+  async function updatePlan(id: number, dto: PlanUpdateDTO) {
+    const res = await apiUpdatePlan(id, dto)
+    if (res.code === 200 && currentPlan.value) {
+      await fetchPlanDetail(currentPlan.value.id)
+      await fetchPlanList()
+    }
+    return res
+  }
+
   async function checkInTask(taskId: number, dto: CheckInDTO) {
     const res = await apiCheckIn(taskId, dto)
     if (res.code === 200 && currentPlan.value) {
@@ -70,10 +84,10 @@ export const usePlanStore = defineStore('plan', () => {
     return res
   }
 
-  async function fetchDashboard() {
+  async function fetchDashboard(timeRange?: 'week' | 'month') {
     loading.value = true
     try {
-      const res = await apiGetDashboard()
+      const res = await apiGetDashboard(timeRange)
       if (res.code === 200) {
         dashboardData.value = res.data
       }
@@ -82,18 +96,42 @@ export const usePlanStore = defineStore('plan', () => {
     }
   }
 
+  async function fetchReminders() {
+    try {
+      const res = await apiGetReminders()
+      if (res.code === 200) {
+        reminders.value = res.data || []
+      }
+    } catch {
+      reminders.value = []
+    }
+  }
+
+  async function readReminder(planId: number) {
+    const res = await apiReadReminder(planId)
+    if (res.code === 200) {
+      reminders.value = reminders.value.filter((r) => r.planId !== planId)
+    }
+    return res
+  }
+
   return {
     planList,
     currentPlan,
     taskList,
     dashboardData,
+    reminders,
     loading,
     activePlans,
+    unreadReminderCount,
     fetchPlanList,
     fetchPlanDetail,
     createPlan,
+    updatePlan,
     checkInTask,
     refreshProgress,
     fetchDashboard,
+    fetchReminders,
+    readReminder,
   }
 })

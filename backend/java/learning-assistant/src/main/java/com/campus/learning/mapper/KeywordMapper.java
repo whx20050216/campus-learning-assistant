@@ -12,5 +12,5 @@ public interface KeywordMapper extends BaseMapper<Keyword> {
 
     List<Keyword> findByMaterialId(@Param("materialId") Long materialId);
 
-    List<Long> findMaterialIdsByKeyword(@Param("keyword") String keyword);
+    List<Long> findMaterialIdsByKeyword(@Param("keyword") String keyword, @Param("userId") Long userId);
 }

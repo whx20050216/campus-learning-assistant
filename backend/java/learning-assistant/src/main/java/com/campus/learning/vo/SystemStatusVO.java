@@ -10,4 +10,7 @@ public class SystemStatusVO {
     private String javaStatus;
     private String pythonStatus;
     private String dbStatus;
+    private String redisStatus;
+    private String diskStatus;
+    private String diskUsage;
 }

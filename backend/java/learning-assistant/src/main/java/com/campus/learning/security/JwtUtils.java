@@ -19,8 +19,12 @@ public class JwtUtils {
     private Long expiration;
 
     public String generateToken(Long userId, String role) {
+        return generateToken(userId, role, expiration);
+    }
+
+    public String generateToken(Long userId, String role, long expirationMillis) {
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + expiration);
+        Date expiry = new Date(now.getTime() + expirationMillis);
 
         return Jwts.builder()
                 .claim("userId", userId)
@@ -29,6 +33,28 @@ public class JwtUtils {
                 .setExpiration(expiry)
                 .signWith(SignatureAlgorithm.HS256, secret.getBytes(StandardCharsets.UTF_8))
                 .compact();
+    }
+
+    public String generateRefreshToken(Long userId) {
+        Date now = new Date();
+        Date expiry = new Date(now.getTime() + 604800000L); // 7 days
+
+        return Jwts.builder()
+                .claim("userId", userId)
+                .claim("type", "refresh")
+                .setIssuedAt(now)
+                .setExpiration(expiry)
+                .signWith(SignatureAlgorithm.HS256, secret.getBytes(StandardCharsets.UTF_8))
+                .compact();
+    }
+
+    public boolean validateRefreshToken(String token) {
+        try {
+            Claims claims = parseToken(token);
+            return "refresh".equals(claims.get("type")) && claims.get("userId") != null && claims.getExpiration().after(new Date());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public Claims parseToken(String token) {

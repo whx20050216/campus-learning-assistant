@@ -16,7 +16,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,13 +36,33 @@ public class AnalysisServiceImpl implements AnalysisService {
     private StudyRecordMapper studyRecordMapper;
 
     @Override
-    public Result<DashboardVO> getDashboard(Long userId) {
+    public Result<DashboardVO> getDashboard(Long userId, String timeRange) {
         DashboardVO dashboard = new DashboardVO();
+        LocalDate today = LocalDate.now();
 
-        // 1. 课程分布饼图数据
+        // 根据 timeRange 计算当前周期和上一周期的起止日期
+        LocalDate currentStart;
+        LocalDate prevStart;
+        LocalDate prevEnd;
+
+        if ("month".equals(timeRange)) {
+            currentStart = today.minusDays(29);  // 近30天（含今天）
+            prevStart = today.minusDays(59);     // 上30天起始
+            prevEnd = today.minusDays(30);       // 上30天结束
+        } else {
+            // 默认 week：近7天（含今天）
+            currentStart = today.minusDays(6);
+            prevStart = today.minusDays(13);
+            prevEnd = today.minusDays(7);
+        }
+
+        // 1. 课程分布饼图数据 + 总资料数（按时间范围过滤）
         QueryWrapper<Material> materialWrapper = new QueryWrapper<>();
         materialWrapper.eq("user_id", userId);
+        materialWrapper.isNull("deleted_at");
+        materialWrapper.ge("created_at", currentStart.atStartOfDay());
         List<Material> materials = materialMapper.selectList(materialWrapper);
+        dashboard.setMaterialCount(materials.size());
 
         Map<String, Long> courseGroup = materials.stream()
                 .filter(m -> m.getCourseTag() != null && !m.getCourseTag().isEmpty())
@@ -58,7 +77,7 @@ public class AnalysisServiceImpl implements AnalysisService {
         });
         dashboard.setCourseDistribution(pieItems);
 
-        // 2. 当前进行中的计划进度条
+        // 2. 当前进行中的计划进度条（与时间维度无关）
         QueryWrapper<StudyPlan> planWrapper = new QueryWrapper<>();
         planWrapper.eq("user_id", userId);
         planWrapper.eq("status", "active");
@@ -73,24 +92,19 @@ public class AnalysisServiceImpl implements AnalysisService {
         }).collect(Collectors.toList());
         dashboard.setCurrentProgress(progressItems);
 
-        // 3. 本周 vs 上周学习时长
-        LocalDate today = LocalDate.now();
-        LocalDate thisMonday = today.with(DayOfWeek.MONDAY);
-        LocalDate lastMonday = thisMonday.minusWeeks(1);
-        LocalDate lastSunday = thisMonday.minusDays(1);
-
-        List<StudyRecord> thisWeekRecords = studyRecordMapper.findByUserIdAndStudyDateBetween(userId, thisMonday, today);
-        int weeklyDuration = thisWeekRecords.stream()
+        // 3. 当前周期 vs 上一周期学习时长
+        List<StudyRecord> currentRecords = studyRecordMapper.findByUserIdAndStudyDateBetween(userId, currentStart, today);
+        int currentDuration = currentRecords.stream()
                 .mapToInt(StudyRecord::getDuration)
                 .sum();
 
-        List<StudyRecord> lastWeekRecords = studyRecordMapper.findByUserIdAndStudyDateBetween(userId, lastMonday, lastSunday);
-        int lastWeekDuration = lastWeekRecords.stream()
+        List<StudyRecord> prevRecords = studyRecordMapper.findByUserIdAndStudyDateBetween(userId, prevStart, prevEnd);
+        int prevDuration = prevRecords.stream()
                 .mapToInt(StudyRecord::getDuration)
                 .sum();
 
-        dashboard.setWeeklyDuration(weeklyDuration);
-        dashboard.setLastWeekDuration(lastWeekDuration);
+        dashboard.setWeeklyDuration(currentDuration);
+        dashboard.setLastWeekDuration(prevDuration);
 
         return Result.success(dashboard);
     }

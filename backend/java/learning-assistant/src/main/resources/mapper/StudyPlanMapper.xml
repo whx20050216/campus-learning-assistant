@@ -8,4 +8,19 @@
         ORDER BY created_at DESC
     </select>
 
+    <select id="findReminders" resultType="com.campus.learning.entity.StudyPlan">
+        SELECT * FROM study_plan
+        WHERE user_id = #{userId}
+          AND status = 'ACTIVE'
+          AND remind_date &lt;= CURDATE()
+          AND reminder_sent = 0
+        ORDER BY remind_date ASC
+    </select>
+
+    <update id="markReminderRead">
+        UPDATE study_plan
+        SET reminder_sent = 1
+        WHERE id = #{id}
+    </update>
+
 </mapper>

@@ -18,17 +18,33 @@ class OcrService:
     """
 
     def __init__(self):
-        self.ocr_engine = PaddleOCR(
-            use_angle_cls=True,
-            lang='ch',
-            show_log=False
-        )
+        self.ocr_engine = None
         self.preprocessor = ImagePreprocessor()
+        try:
+            self.ocr_engine = PaddleOCR(
+                use_angle_cls=True,
+                lang='ch',
+                show_log=False,
+                use_gpu=False
+            )
+            logger.info("PaddleOCR 初始化成功")
+        except Exception as e:
+            logger.error(f"PaddleOCR 初始化失败: {e}")
 
     def recognize(self, file_path: str) -> OcrResponse:
         """
         识别主方法：支持 PDF（多页）和图片。
         """
+        if self.ocr_engine is None:
+            logger.error("OCR 引擎未初始化，无法识别")
+            return OcrResponse(
+                text="",
+                confidence=0.0,
+                engine="paddleocr",
+                pages=0,
+                source="local"
+            )
+
         ext = os.path.splitext(file_path)[1].lower()
 
         if ext == ".pdf":

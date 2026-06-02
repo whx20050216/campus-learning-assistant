@@ -42,7 +42,7 @@ DROP PROCEDURE IF EXISTS AddColumnIfNotExists;
 -- 2. 建立 FULLTEXT 索引（支持中文需 ngram 解析器）
 -- =============================================
 
--- materials.title 全文索引
+-- materials.title 全文索引（使用 ngram 解析器以支持中文分词）
 SET @idx_exists := (
     SELECT COUNT(*) FROM information_schema.STATISTICS
     WHERE TABLE_SCHEMA = DATABASE()
@@ -50,14 +50,14 @@ SET @idx_exists := (
     AND INDEX_NAME = 'ft_title'
 );
 SET @sql_title := IF(@idx_exists = 0,
-    'ALTER TABLE materials ADD FULLTEXT INDEX ft_title(title)',
+    'ALTER TABLE materials ADD FULLTEXT INDEX ft_title(title) WITH PARSER ngram',
     'SELECT 1'
 );
 PREPARE stmt FROM @sql_title;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- ocr_result.ocr_text 全文索引
+-- ocr_result.ocr_text 全文索引（使用 ngram 解析器以支持中文分词）
 SET @idx_exists2 := (
     SELECT COUNT(*) FROM information_schema.STATISTICS
     WHERE TABLE_SCHEMA = DATABASE()
@@ -65,7 +65,7 @@ SET @idx_exists2 := (
     AND INDEX_NAME = 'ft_ocr_text'
 );
 SET @sql_ocr := IF(@idx_exists2 = 0,
-    'ALTER TABLE ocr_result ADD FULLTEXT INDEX ft_ocr_text(ocr_text)',
+    'ALTER TABLE ocr_result ADD FULLTEXT INDEX ft_ocr_text(ocr_text) WITH PARSER ngram',
     'SELECT 1'
 );
 PREPARE stmt2 FROM @sql_ocr;

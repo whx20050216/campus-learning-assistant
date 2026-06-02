@@ -31,19 +31,23 @@ public class SearchController {
 
         switch (mode) {
             case "keyword": {
-                Page<SearchResultVO> result = searchService.searchByKeyword(query, page, size);
+                Page<SearchResultVO> result = searchService.searchByKeyword(query, page, size, userId);
                 return Result.success(result);
             }
             case "knowledge": {
-                List<SearchResultVO> result = searchService.searchByKnowledge(query);
+                List<SearchResultVO> result = searchService.searchByKnowledge(query, userId);
                 return Result.success(result);
             }
             case "course": {
-                List<SearchResultVO> result = searchService.searchByCourse(query);
+                List<SearchResultVO> result = searchService.searchByCourse(query, userId);
+                return Result.success(result);
+            }
+            case "all": {
+                Page<SearchResultVO> result = searchService.searchAll(query, page, size, userId);
                 return Result.success(result);
             }
             default:
-                return Result.error("非法搜索模式，支持 keyword/knowledge/course");
+                return Result.error("非法搜索模式，支持 keyword/knowledge/course/all");
         }
     }
 }

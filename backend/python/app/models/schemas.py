@@ -38,7 +38,12 @@ class EnhanceRequest(BaseModel):
 class EnhanceResponse(BaseModel):
     source: str
     text: Optional[str] = None
+    summary: Optional[str] = None
     engine: Optional[str] = None
+
+
+class SummaryResponse(BaseModel):
+    summary: str = Field(default="", description="生成的深度摘要")
 
 
 class HealthResponse(BaseModel):

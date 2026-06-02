@@ -14,7 +14,9 @@ public interface MaterialMapper extends BaseMapper<Material> {
 
     List<Material> findByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId);
 
-    Page<SearchResultVO> searchByFulltext(@Param("keyword") String keyword, Page<SearchResultVO> page);
+    Page<SearchResultVO> searchByFulltext(@Param("keyword") String keyword, Page<SearchResultVO> page, @Param("userId") Long userId);
 
-    List<SearchResultVO> findByIds(@Param("ids") List<Long> ids);
+    List<SearchResultVO> searchByLike(@Param("keyword") String keyword, @Param("userId") Long userId);
+
+    List<SearchResultVO> findByIds(@Param("ids") List<Long> ids, @Param("userId") Long userId);
 }

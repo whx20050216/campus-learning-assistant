@@ -31,6 +31,12 @@ public class User {
 
     private Integer status;
 
+    @TableField("storage_quota")
+    private Long storageQuota;
+
+    @TableField("used_storage")
+    private Long usedStorage;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

@@ -6,20 +6,28 @@ import com.campus.learning.entity.Keyword;
 import com.campus.learning.entity.KnowledgePoint;
 import com.campus.learning.entity.Material;
 import com.campus.learning.entity.OcrResult;
+import com.campus.learning.entity.StudyTask;
+import com.campus.learning.entity.User;
 import com.campus.learning.mapper.KeywordMapper;
 import com.campus.learning.mapper.KnowledgePointMapper;
 import com.campus.learning.mapper.MaterialMapper;
 import com.campus.learning.mapper.OcrResultMapper;
+import com.campus.learning.mapper.StudyTaskMapper;
+import com.campus.learning.mapper.UserMapper;
 import com.campus.learning.service.AiEngineService;
 import com.campus.learning.service.MaterialService;
+import com.campus.learning.service.SensitiveWordService;
 import com.campus.learning.vo.KeywordVO;
+import com.campus.learning.vo.KnowledgePointVO;
 import com.campus.learning.vo.MaterialDetailVO;
 import com.campus.learning.vo.MaterialVO;
 import com.campus.learning.vo.OcrResultVO;
 import io.minio.GetObjectArgs;
+import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.http.Method;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,6 +67,15 @@ public class MaterialServiceImpl implements MaterialService {
     private KnowledgePointMapper knowledgePointMapper;
 
     @Autowired
+    private StudyTaskMapper studyTaskMapper;
+
+    @Autowired
+    private UserMapper userMapper;
+
+    @Autowired
+    private SensitiveWordService sensitiveWordService;
+
+    @Autowired
     private AiEngineService aiEngineService;
 
     @Autowired
@@ -68,12 +85,26 @@ public class MaterialServiceImpl implements MaterialService {
     @Value("${minio.bucket-name}")
     private String bucketName;
 
+    @Value("${minio.external-endpoint:}")
+    private String minioExternalEndpoint;
+
+    @Value("${minio.access-key}")
+    private String minioAccessKey;
+
+    @Value("${minio.secret-key}")
+    private String minioSecretKey;
+
+    @Value("${python.api.url:http://localhost:8000}")
+    private String pythonApiUrl;
+
     private static final long MAX_FILE_SIZE = 50L * 1024 * 1024; // 50MB
-    private static final double CONFIDENCE_THRESHOLD = 0.85;
     private static final long PROCESS_TIMEOUT_MS = 30000; // 30 seconds
 
+    @Value("${ocr.confidence.threshold:0.85}")
+    private Float confidenceThreshold;
+
     @Override
-    public Material upload(MultipartFile file, Long userId) throws Exception {
+    public Material upload(MultipartFile file, Long userId, String courseTag, Integer pages) throws Exception {
         // 1. 校验文件格式
         String originalFilename = file.getOriginalFilename();
         if (originalFilename == null || !originalFilename.contains(".")) {
@@ -107,7 +138,13 @@ public class MaterialServiceImpl implements MaterialService {
             return existing;
         }
 
-        // 5. MinIO 上传
+        // 5. 存储配额校验
+        User user = userMapper.selectById(userId);
+        if (user != null && user.getUsedStorage() + file.getSize() > user.getStorageQuota()) {
+            throw new IllegalArgumentException("存储空间已满，请删除旧资料后重试");
+        }
+
+        // 6. MinIO 上传
         String uniqueFilename = UUID.randomUUID().toString() + "." + extension;
         minioClient.putObject(
                 PutObjectArgs.builder()
@@ -118,7 +155,7 @@ public class MaterialServiceImpl implements MaterialService {
                         .build()
         );
 
-        // 6. 保存 Material
+        // 7. 保存 Material
         Material material = new Material();
         material.setUserId(userId);
         material.setTitle(originalFilename);
@@ -128,18 +165,33 @@ public class MaterialServiceImpl implements MaterialService {
         material.setMd5(md5);
         material.setStatus("processing");
         material.setSource("local");
+        material.setCourseTag(courseTag);
+        if (pages != null && pages > 0) {
+            material.setPages(pages);
+        }
         material.setCreatedAt(LocalDateTime.now());
         material.setUpdatedAt(LocalDateTime.now());
         materialMapper.insert(material);
 
-        // 7. 同步处理 OCR（30秒总超时保护）
+        // 更新用户已用存储
+        if (user != null) {
+            user.setUsedStorage(user.getUsedStorage() + file.getSize());
+            userMapper.updateById(user);
+        }
+
+        // 8. 同步处理 OCR（30秒总超时保护）
         long startTime = System.currentTimeMillis();
         try {
             self.processOcr(material.getId(), uniqueFilename);
             long elapsed = System.currentTimeMillis() - startTime;
             log.info("OCR 总耗时: {}ms, materialId={}", elapsed, material.getId());
             if (elapsed > PROCESS_TIMEOUT_MS) {
-                throw new RuntimeException("处理超时，建议压缩后重试");
+                log.warn("OCR 处理超时: materialId={}", material.getId());
+                Material update = new Material();
+                update.setId(material.getId());
+                update.setStatus("failed");
+                update.setUpdatedAt(LocalDateTime.now());
+                materialMapper.updateById(update);
             }
         } catch (Exception e) {
             log.error("OCR 处理异常: materialId={}, error={}", material.getId(), e.getMessage());
@@ -148,10 +200,7 @@ public class MaterialServiceImpl implements MaterialService {
             update.setStatus("failed");
             update.setUpdatedAt(LocalDateTime.now());
             materialMapper.updateById(update);
-            if (e.getMessage() != null && e.getMessage().contains("超时")) {
-                throw new RuntimeException("处理超时，建议压缩后重试");
-            }
-            throw new RuntimeException("处理失败: " + e.getMessage());
+            // 不抛出异常，确保前端能拿到 materialId
         }
 
         return materialMapper.selectById(material.getId());
@@ -191,15 +240,17 @@ public class MaterialServiceImpl implements MaterialService {
             }
 
             // 双轨决策
-            boolean useLocalNlp = confidence > CONFIDENCE_THRESHOLD;
-            String source = "local";
+            float threshold = confidenceThreshold != null ? confidenceThreshold : 0.85f;
+            boolean useLocalNlp = confidence > threshold;
+            String source;
             String engine = "paddleocr";
             String summary = "";
             List<Keyword> keywords = new ArrayList<>();
             List<KnowledgePoint> knowledgePoints = new ArrayList<>();
 
             if (useLocalNlp) {
-                // 本地 NLP 处理
+                // 高置信度：本地 NLP 处理，不再自动调用智谱 API（用户可在详情页手动触发 AI 增强摘要）
+                source = "local";
                 AiEngineService.NlpResult nlpResult = aiEngineService.analyzeText(ocrText);
                 summary = nlpResult.summary();
                 keywords = nlpResult.keywords().stream().map(kw -> {
@@ -212,16 +263,35 @@ public class MaterialServiceImpl implements MaterialService {
                 knowledgePoints = extractKnowledgePoints(ocrText, materialId);
 
             } else {
-                // 低置信度：尝试智谱 API 增强（mock，后续联调）
+                // 低置信度：尝试智谱 API 增强
+                source = "fallback";
+                boolean summaryFromApi = false;
                 try {
-                    String enhanced = apiEnhance(ocrText);
-                    if (enhanced != null && !enhanced.isEmpty()) {
-                        ocrText = enhanced;
+                    AiEngineService.ApiEnhanceResult enhanceResult = aiEngineService.apiEnhance(ocrText, fileUrl);
+                    if (enhanceResult != null && enhanceResult.text() != null && !enhanceResult.text().isEmpty()) {
+                        ocrText = enhanceResult.text();
                         source = "ai_enhanced";
                         engine = "zhipu";
+                        if (enhanceResult.summary() != null && !enhanceResult.summary().isEmpty()) {
+                            summary = enhanceResult.summary();
+                            summaryFromApi = true;
+                        }
                     }
+                    // 关键词和知识点仍需 NLP 分析
                     AiEngineService.NlpResult nlpResult = aiEngineService.analyzeText(ocrText);
-                    summary = nlpResult.summary();
+                    if (!summaryFromApi) {
+                        summary = nlpResult.summary();
+                        // 兜底：调用 AI 摘要生成覆盖本地 TextRank
+                        try {
+                            String aiSummary = aiEngineService.generateAiSummary(ocrText);
+                            if (aiSummary != null && !aiSummary.isEmpty()) {
+                                summary = aiSummary;
+                                source = "ai_enhanced";
+                            }
+                        } catch (Exception e) {
+                            log.warn("低置信度资料 AI 摘要兜底失败，保留本地 TextRank: {}", e.getMessage());
+                        }
+                    }
                     keywords = nlpResult.keywords().stream().map(kw -> {
                         Keyword k = new Keyword();
                         k.setMaterialId(materialId);
@@ -242,7 +312,7 @@ public class MaterialServiceImpl implements MaterialService {
                         return k;
                     }).collect(Collectors.toList());
                     knowledgePoints = extractKnowledgePoints(ocrText, materialId);
-                    source = "local_fallback";
+                    source = "fallback";
                 }
             }
 
@@ -251,6 +321,13 @@ public class MaterialServiceImpl implements MaterialService {
             }
 
             int processingTimeMs = (int) (System.currentTimeMillis() - startTime);
+
+            // 敏感词检测
+            boolean hasSensitiveWord = sensitiveWordService.containsSensitiveWord(ocrText);
+            String auditStatus = hasSensitiveWord ? "pending" : "approved";
+            if (hasSensitiveWord) {
+                log.warn("资料 {} 命中敏感词，已标记为待审核", materialId);
+            }
 
             // 保存 OCR 结果
             OcrResult result = new OcrResult();
@@ -283,6 +360,7 @@ public class MaterialServiceImpl implements MaterialService {
             update.setId(materialId);
             update.setStatus("completed");
             update.setSource(source);
+            update.setAuditStatus(auditStatus);
             update.setUpdatedAt(LocalDateTime.now());
             materialMapper.updateById(update);
 
@@ -299,6 +377,10 @@ public class MaterialServiceImpl implements MaterialService {
     public MaterialDetailVO getDetail(Long id) {
         Material material = materialMapper.selectById(id);
         if (material == null) {
+            return null;
+        }
+        // 过滤已删除（回收站）资料
+        if (material.getDeletedAt() != null || "deleted".equals(material.getStatus())) {
             return null;
         }
 
@@ -321,7 +403,21 @@ public class MaterialServiceImpl implements MaterialService {
         }).collect(Collectors.toList());
         vo.setKeywords(keywordVos);
 
+        List<KnowledgePoint> knowledgePoints = knowledgePointMapper.findByMaterialId(id);
+        List<KnowledgePointVO> knowledgePointVos = knowledgePoints.stream().map(kp -> {
+            KnowledgePointVO kpv = new KnowledgePointVO();
+            kpv.setContent(kp.getContent());
+            kpv.setType(kp.getType());
+            return kpv;
+        }).collect(Collectors.toList());
+        vo.setKnowledgePoints(knowledgePointVos);
+
         return vo;
+    }
+
+    @Override
+    public Material getMaterialById(Long id) {
+        return materialMapper.selectById(id);
     }
 
     @Override
@@ -329,6 +425,7 @@ public class MaterialServiceImpl implements MaterialService {
         Page<Material> mpPage = new Page<>(page + 1, size);
         QueryWrapper<Material> wrapper = new QueryWrapper<>();
         wrapper.eq("user_id", userId);
+        wrapper.isNull("deleted_at"); // 过滤回收站资料
         if (courseTag != null && !courseTag.isEmpty()) {
             wrapper.eq("course_tag", courseTag);
         }
@@ -352,6 +449,13 @@ public class MaterialServiceImpl implements MaterialService {
     @Transactional
     @Override
     public void delete(Long id, Long userId) {
+        // 兼容旧调用：默认物理删除
+        deleteMaterial(id, userId, true);
+    }
+
+    @Transactional
+    @Override
+    public void deleteMaterial(Long id, Long userId, boolean permanent) {
         Material material = materialMapper.selectById(id);
         if (material == null) {
             throw new IllegalArgumentException("资料不存在");
@@ -360,36 +464,193 @@ public class MaterialServiceImpl implements MaterialService {
             throw new IllegalArgumentException("无权删除该资料");
         }
 
-        QueryWrapper<OcrResult> ocrWrapper = new QueryWrapper<>();
-        ocrWrapper.eq("material_id", id);
-        ocrResultMapper.delete(ocrWrapper);
+        if (permanent) {
+            // 永久删除前：解除与学习任务的关联（防御性修复）
+            com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<StudyTask> taskWrapper = new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<>();
+            taskWrapper.eq("material_id", id);
+            taskWrapper.set("material_id", null);
+            studyTaskMapper.update(null, taskWrapper);
 
-        QueryWrapper<Keyword> kwWrapper = new QueryWrapper<>();
-        kwWrapper.eq("material_id", id);
-        keywordMapper.delete(kwWrapper);
+            // 永久删除：MinIO + DB 级联删除
+            QueryWrapper<OcrResult> ocrWrapper = new QueryWrapper<>();
+            ocrWrapper.eq("material_id", id);
+            ocrResultMapper.delete(ocrWrapper);
 
-        QueryWrapper<KnowledgePoint> kpWrapper = new QueryWrapper<>();
-        kpWrapper.eq("material_id", id);
-        knowledgePointMapper.delete(kpWrapper);
+            QueryWrapper<Keyword> kwWrapper = new QueryWrapper<>();
+            kwWrapper.eq("material_id", id);
+            keywordMapper.delete(kwWrapper);
 
-        materialMapper.deleteById(id);
+            QueryWrapper<KnowledgePoint> kpWrapper = new QueryWrapper<>();
+            kpWrapper.eq("material_id", id);
+            knowledgePointMapper.delete(kpWrapper);
 
-        try {
-            minioClient.removeObject(
-                    RemoveObjectArgs.builder()
-                            .bucket(bucketName)
-                            .object(material.getFileUrl())
-                            .build()
-            );
-        } catch (Exception e) {
-            log.error("MinIO 文件删除失败: materialId={}, fileUrl={}", id, material.getFileUrl(), e);
+            materialMapper.deleteById(id);
+
+            // 回减用户已用存储
+            User user = userMapper.selectById(userId);
+            if (user != null && material.getFileSize() != null) {
+                user.setUsedStorage(Math.max(0, user.getUsedStorage() - material.getFileSize()));
+                userMapper.updateById(user);
+            }
+
+            try {
+                minioClient.removeObject(
+                        RemoveObjectArgs.builder()
+                                .bucket(bucketName)
+                                .object(material.getFileUrl())
+                                .build()
+                );
+            } catch (Exception e) {
+                log.error("MinIO 文件删除失败: materialId={}, fileUrl={}", id, material.getFileUrl(), e);
+            }
+        } else {
+            // 逻辑删除：移至回收站
+            Material update = new Material();
+            update.setId(id);
+            update.setDeletedAt(LocalDateTime.now());
+            update.setDeletedBy("user");
+            update.setStatus("deleted");
+            materialMapper.updateById(update);
         }
     }
 
-    private String apiEnhance(String text) throws Exception {
-        log.info("智谱 API 增强（mock，待批次3联调）");
-        return null;
+    @Override
+    public void restoreMaterial(Long id, Long userId) {
+        Material material = materialMapper.selectById(id);
+        if (material == null) {
+            throw new IllegalArgumentException("资料不存在");
+        }
+        if (!material.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("无权操作该资料");
+        }
+        com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Material> wrapper = new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<>();
+        wrapper.eq("id", id);
+        wrapper.set("deleted_at", null);
+        wrapper.set("deleted_by", null);
+        wrapper.set("status", "completed");
+        wrapper.set("updated_at", java.time.LocalDateTime.now());
+        materialMapper.update(null, wrapper);
     }
+
+    private String getExternalPresignedUrl(String bucket, String object, int expirySeconds) {
+        try {
+            MinioClient externalClient = MinioClient.builder()
+                    .endpoint(minioExternalEndpoint)
+                    .credentials(minioAccessKey, minioSecretKey)
+                    .build();
+            return externalClient.getPresignedObjectUrl(
+                    GetPresignedObjectUrlArgs.builder()
+                            .method(Method.GET)
+                            .bucket(bucket)
+                            .object(object)
+                            .expiry(expirySeconds)
+                            .build()
+            );
+        } catch (Exception e) {
+            log.error("生成外部预签名 URL 失败: bucket={}, object={}", bucket, object, e);
+            throw new RuntimeException("文件预览链接生成失败");
+        }
+    }
+
+    @Override
+    public InputStream getFileStream(String fileUrl) {
+        try {
+            return minioClient.getObject(
+                GetObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(fileUrl)
+                    .build()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("文件读取失败：" + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public String getPreviewUrl(Long id, Long userId) {
+        Material material = materialMapper.selectById(id);
+        if (material == null) {
+            throw new IllegalArgumentException("资料不存在");
+        }
+        if (!material.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("无权访问该资料");
+        }
+        if (minioExternalEndpoint == null || minioExternalEndpoint.isBlank()) {
+            // 未配置外部地址时，回退到内部 client（本地开发场景）
+            try {
+                return minioClient.getPresignedObjectUrl(
+                        GetPresignedObjectUrlArgs.builder()
+                                .method(Method.GET)
+                                .bucket(bucketName)
+                                .object(material.getFileUrl())
+                                .expiry(300)
+                                .build()
+                );
+            } catch (Exception e) {
+                log.error("生成预签名 URL 失败: materialId={}", id, e);
+                throw new RuntimeException("生成预览链接失败: " + e.getMessage());
+            }
+        }
+        return getExternalPresignedUrl(bucketName, material.getFileUrl(), 300);
+    }
+
+    @Override
+    @Transactional
+    public void updateMaterialInfo(Long id, Long userId, String title, String courseTag, Integer pages) {
+        Material material = materialMapper.selectById(id);
+        if (material == null) {
+            throw new IllegalArgumentException("资料不存在");
+        }
+        if (!material.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("无权操作该资料");
+        }
+        if (title != null) {
+            material.setTitle(title);
+        }
+        if (courseTag != null) {
+            material.setCourseTag(courseTag);
+        }
+        if (pages != null && pages > 0) {
+            material.setPages(pages);
+        }
+        material.setUpdatedAt(LocalDateTime.now());
+        materialMapper.updateById(material);
+    }
+
+    @Override
+    @Transactional
+    public void updateKeywords(Long id, Long userId, List<String> keywords) {
+        Material material = materialMapper.selectById(id);
+        if (material == null) {
+            throw new IllegalArgumentException("资料不存在");
+        }
+        if (!material.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("无权操作该资料");
+        }
+        // 去重、截断
+        List<String> clean = keywords.stream()
+                .filter(k -> k != null && !k.trim().isEmpty())
+                .map(String::trim)
+                .distinct()
+                .limit(20)
+                .filter(k -> k.length() <= 100)
+                .collect(Collectors.toList());
+        // 删除旧关键词
+        QueryWrapper<Keyword> delWrapper = new QueryWrapper<>();
+        delWrapper.eq("material_id", id);
+        keywordMapper.delete(delWrapper);
+        // 批量插入新关键词
+        for (String kw : clean) {
+            Keyword k = new Keyword();
+            k.setMaterialId(id);
+            k.setKeyword(kw);
+            k.setWeight(1.0f);
+            k.setType("keyword");
+            keywordMapper.insert(k);
+        }
+    }
+
+    // apiEnhance 已迁移至 AiEngineService，本类直接调用 aiEngineService.apiEnhance()
 
     private List<KnowledgePoint> extractKnowledgePoints(String text, Long materialId) {
         List<KnowledgePoint> points = new ArrayList<>();

@@ -18,6 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# PaddlePaddle 兼容性检查（构建时即验证，避免运行时 SIGILL）
+RUN python -c "import paddle; print('PaddlePaddle version:', paddle.__version__); print('PaddlePaddle import OK')"
+
 # 复制应用代码
 COPY app ./app
 

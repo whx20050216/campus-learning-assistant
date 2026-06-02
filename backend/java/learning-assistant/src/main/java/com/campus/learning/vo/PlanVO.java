@@ -40,4 +40,6 @@ public class PlanVO {
     private LocalDateTime updatedAt;
 
     private List<TaskVO> tasks;
+
+    private List<MaterialVO> materials;
 }

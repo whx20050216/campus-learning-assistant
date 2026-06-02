@@ -8,42 +8,44 @@
 USE learning_assistant;
 
 -- =============================================
--- 1. users 表结构变更
+-- 1. users 表结构变更（幂等，IF NOT EXISTS）
 -- =============================================
 ALTER TABLE users
-    ADD COLUMN student_no VARCHAR(50) UNIQUE COMMENT '学号，登录凭据' AFTER id,
-    ADD COLUMN major VARCHAR(100) COMMENT '专业' AFTER email,
-    ADD COLUMN grade VARCHAR(20) COMMENT '年级' AFTER major,
-    ADD COLUMN role VARCHAR(20) DEFAULT 'STUDENT' COMMENT '角色：STUDENT/ADMIN' AFTER grade,
-    ADD COLUMN status INT DEFAULT 1 COMMENT '账号状态：1-正常 0-禁用' AFTER role,
-    ADD INDEX idx_student_no (student_no);
+    ADD COLUMN IF NOT EXISTS student_no VARCHAR(50) UNIQUE COMMENT '学号，登录凭据' AFTER id,
+    ADD COLUMN IF NOT EXISTS major VARCHAR(100) COMMENT '专业' AFTER email,
+    ADD COLUMN IF NOT EXISTS grade VARCHAR(20) COMMENT '年级' AFTER major,
+    ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'STUDENT' COMMENT '角色：STUDENT/ADMIN' AFTER grade,
+    ADD COLUMN IF NOT EXISTS status INT DEFAULT 1 COMMENT '账号状态：1-正常 0-禁用' AFTER role,
+    ADD COLUMN IF NOT EXISTS storage_quota BIGINT DEFAULT 5368709120 COMMENT '存储配额字节，默认5GB' AFTER status,
+    ADD COLUMN IF NOT EXISTS used_storage BIGINT DEFAULT 0 COMMENT '已用存储字节' AFTER storage_quota,
+    ADD INDEX IF NOT EXISTS idx_student_no (student_no);
 
 -- =============================================
--- 2. materials 表结构变更
+-- 2. materials 表结构变更（幂等）
 -- =============================================
 
 -- 新增字段
 ALTER TABLE materials
-    ADD COLUMN pages INT COMMENT '资料页数（学习计划用）' AFTER file_size,
-    ADD COLUMN md5 VARCHAR(64) COMMENT '文件MD5校验值' AFTER pages,
-    ADD COLUMN course_tag VARCHAR(100) COMMENT '课程分类标签' AFTER md5,
-    ADD COLUMN source VARCHAR(50) DEFAULT 'local' COMMENT '处理来源：local/ai_enhanced/local_fallback' AFTER status;
+    ADD COLUMN IF NOT EXISTS pages INT COMMENT '资料页数（学习计划用）' AFTER file_size,
+    ADD COLUMN IF NOT EXISTS md5 VARCHAR(64) COMMENT '文件MD5校验值' AFTER pages,
+    ADD COLUMN IF NOT EXISTS course_tag VARCHAR(100) COMMENT '课程分类标签' AFTER md5;
 
--- 重命名字段（MySQL 8.0 支持 RENAME COLUMN）
-ALTER TABLE materials
-    RENAME COLUMN filename TO title,
-    RENAME COLUMN minio_path TO file_url;
+-- 重命名字段（条件判断，避免重复执行报错）
+SET @rename_needed = (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'materials' AND COLUMN_NAME = 'filename');
+SET @rename_sql = IF(@rename_needed > 0, 'ALTER TABLE materials RENAME COLUMN filename TO title, RENAME COLUMN minio_path TO file_url', 'SELECT 1');
+PREPARE rename_stmt FROM @rename_sql;
+EXECUTE rename_stmt;
+DEALLOCATE PREPARE rename_stmt;
 
 -- 移除 OCR/NLP 相关字段（迁移到 ocr_result / keyword 表）
 ALTER TABLE materials
-    DROP COLUMN ocr_text,
-    DROP COLUMN ocr_confidence,
-    DROP COLUMN keywords,
-    DROP COLUMN summary,
-    DROP COLUMN key_sentences;
+    DROP COLUMN IF EXISTS ocr_text,
+    DROP COLUMN IF EXISTS ocr_confidence,
+    DROP COLUMN IF EXISTS keywords,
+    DROP COLUMN IF EXISTS summary;
 
 -- 为 course_tag 加索引
-ALTER TABLE materials ADD INDEX idx_course_tag (course_tag);
+ALTER TABLE materials ADD INDEX IF NOT EXISTS idx_course_tag (course_tag);
 
 -- =============================================
 -- 3. ocr_result 表（OCR 与 NLP 结果）
@@ -70,6 +72,7 @@ CREATE TABLE IF NOT EXISTS keyword (
     material_id BIGINT NOT NULL COMMENT '关联资料ID',
     keyword VARCHAR(100) NOT NULL COMMENT '关键词',
     weight FLOAT DEFAULT 0 COMMENT 'TF-IDF权重',
+    type VARCHAR(50) DEFAULT 'keyword' COMMENT '关键词类型',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE CASCADE,
     INDEX idx_keyword (keyword)

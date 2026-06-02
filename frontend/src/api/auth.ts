@@ -9,9 +9,15 @@ export interface RegisterDTO {
   grade?: string
 }
 
+export interface TokenVO {
+  accessToken: string
+  refreshToken: string
+}
+
 export interface LoginDTO {
   account: string
   password: string
+  rememberMe?: boolean
 }
 
 export interface UserVO {
@@ -31,9 +37,14 @@ export function register(data: RegisterDTO) {
 }
 
 export function login(data: LoginDTO) {
-  return request.post<any, { code: number; msg: string; data: string }>('/api/auth/login', data)
+  return request.post<any, { code: number; msg: string; data: TokenVO }>('/api/auth/login', data)
 }
 
 export function getCurrentUser() {
   return request.get<any, { code: number; msg: string; data: UserVO }>('/api/auth/me')
+}
+
+// TODO: 批次 F 需后端提供 PUT /api/auth/profile 或 PUT /api/users/me 接口
+export function updateProfile(data: Partial<Pick<UserVO, 'email' | 'major' | 'grade'>>) {
+  return request.put<any, { code: number; msg: string; data: UserVO }>('/api/auth/profile', data)
 }

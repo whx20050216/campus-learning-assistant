@@ -14,4 +14,6 @@ public class DashboardVO {
     private Integer weeklyDuration;
 
     private Integer lastWeekDuration;
+
+    private Integer materialCount;
 }

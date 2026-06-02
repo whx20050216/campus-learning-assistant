@@ -9,9 +9,17 @@ export interface PlanCreateDTO {
   materialIds: number[]
 }
 
+export interface PlanUpdateDTO {
+  name?: string
+  endDate?: string
+  dailyHours?: number
+  materialIds?: number[]
+}
+
 export interface CheckInDTO {
   duration: number
   content?: string
+  studyDate?: string
 }
 
 export interface TaskVO {
@@ -46,6 +54,14 @@ export interface PlanVO {
   createdAt: string
   updatedAt: string
   tasks?: TaskVO[]
+  materials?: MaterialVO[]
+}
+
+export interface PlanReminderVO {
+  planId: number
+  planName: string
+  remindDate: string
+  daysLeft: number
 }
 
 export interface MaterialVO {
@@ -68,6 +84,10 @@ export function getPlanDetail(id: number) {
   return request.get<any, { code: number; msg: string; data: PlanVO }>(`/api/plans/${id}`)
 }
 
+export function updatePlan(id: number, data: PlanUpdateDTO) {
+  return request.put<any, { code: number; msg: string; data: PlanVO }>(`/api/plans/${id}`, data)
+}
+
 export function checkIn(taskId: number, data: CheckInDTO) {
   return request.post<any, { code: number; msg: string; data: null }>(`/api/plans/tasks/${taskId}/check-in`, data)
 }
@@ -78,4 +98,16 @@ export function getProgress(id: number) {
 
 export function getMaterials() {
   return request.get<any, { code: number; msg: string; data: { records: MaterialVO[] } }>('/api/materials?page=0&size=1000')
+}
+
+export function deletePlan(id: number) {
+  return request.delete<any, { code: number; msg: string; data: any }>(`/api/plans/${id}`)
+}
+
+export function getReminders() {
+  return request.get<any, { code: number; msg: string; data: PlanReminderVO[] }>('/api/plans/reminders')
+}
+
+export function readReminder(planId: number) {
+  return request.post<any, { code: number; msg: string; data: any }>(`/api/plans/reminders/${planId}/read`)
 }

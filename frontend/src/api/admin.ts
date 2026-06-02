@@ -27,6 +27,9 @@ export interface SystemStatusVO {
   javaStatus: string
   pythonStatus: string
   dbStatus: string
+  redisStatus: string
+  diskStatus: string
+  diskUsage: string
 }
 
 export function getUsers(page: number = 1, size: number = 10) {
