@@ -12,10 +12,12 @@ export interface ProgressItem {
 
 export interface DashboardVO {
   courseDistribution: PieItem[]
+  examDistribution: PieItem[]
   currentProgress: ProgressItem[]
   weeklyDuration: number
   lastWeekDuration: number
   materialCount: number
+  examCount: number
 }
 
 export function getDashboard(timeRange?: 'week' | 'month') {

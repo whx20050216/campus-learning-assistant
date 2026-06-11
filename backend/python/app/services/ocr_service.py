@@ -162,11 +162,15 @@ class OcrService:
 
 
 # 全局单例（避免重复加载模型）
+import threading
 _ocr_service: OcrService = None
+_ocr_service_lock = threading.Lock()
 
 
 def get_ocr_service() -> OcrService:
     global _ocr_service
     if _ocr_service is None:
-        _ocr_service = OcrService()
+        with _ocr_service_lock:
+            if _ocr_service is None:
+                _ocr_service = OcrService()
     return _ocr_service

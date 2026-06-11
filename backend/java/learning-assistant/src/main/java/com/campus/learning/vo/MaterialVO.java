@@ -16,5 +16,6 @@ public class MaterialVO {
     private String courseTag;
     private String status;
     private String source;
+    private String deletedBy;
     private LocalDateTime createdAt;
 }

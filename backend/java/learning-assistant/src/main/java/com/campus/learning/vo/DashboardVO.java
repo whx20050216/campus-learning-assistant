@@ -9,6 +9,8 @@ public class DashboardVO {
 
     private List<PieItem> courseDistribution;
 
+    private List<PieItem> examDistribution;
+
     private List<ProgressItem> currentProgress;
 
     private Integer weeklyDuration;
@@ -16,4 +18,6 @@ public class DashboardVO {
     private Integer lastWeekDuration;
 
     private Integer materialCount;
+
+    private Integer examCount;
 }

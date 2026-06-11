@@ -1,10 +1,14 @@
 package com.campus.learning.security;
 
+import com.campus.learning.entity.User;
+import com.campus.learning.mapper.UserMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -13,6 +17,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 
 @Component
@@ -20,6 +25,9 @@ public class AuthFilter extends OncePerRequestFilter {
 
     @Autowired
     private JwtUtils jwtUtils;
+
+    @Autowired
+    private UserMapper userMapper;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -30,6 +38,17 @@ public class AuthFilter extends OncePerRequestFilter {
 
         if (StringUtils.hasText(token) && jwtUtils.validateToken(token)) {
             Long userId = jwtUtils.getUserId(token);
+
+            // 检查用户是否被冻结
+            User user = userMapper.selectById(userId);
+            if (user != null && user.getStatus() != null && user.getStatus() == 0) {
+                response.setStatus(HttpStatus.FORBIDDEN.value());
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                response.getWriter().write("{\"code\":403,\"msg\":\"账号已被冻结，请联系管理员\"}");
+                return;
+            }
+
             String role = jwtUtils.getRole(token);
 
             UsernamePasswordAuthenticationToken authentication =
@@ -57,9 +76,15 @@ public class AuthFilter extends OncePerRequestFilter {
     }
 
     private String resolveToken(HttpServletRequest request) {
+        // 1. 先从 Header 读取
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);
+        }
+        // 2. 再从 URL 参数读取（SSE EventSource 无法设置 Header）
+        String tokenParam = request.getParameter("token");
+        if (StringUtils.hasText(tokenParam)) {
+            return tokenParam;
         }
         return null;
     }

@@ -6,6 +6,7 @@ import com.campus.learning.entity.Material;
 import com.campus.learning.mapper.KeywordMapper;
 import com.campus.learning.mapper.MaterialMapper;
 import com.campus.learning.service.SearchService;
+import com.campus.learning.utils.HighlightUtils;
 import com.campus.learning.vo.SearchResultVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,10 +43,13 @@ public class SearchServiceImpl implements SearchService {
 
         Page<SearchResultVO> mpPage = new Page<>(page + 1, size);
         try {
-            return materialMapper.searchByFulltext(cleanKeyword, mpPage, userId);
+            Page<SearchResultVO> result = materialMapper.searchByFulltext(cleanKeyword, mpPage, userId);
+            highlightResults(result.getRecords(), cleanKeyword);
+            return result;
         } catch (Exception e) {
             log.error("全文检索失败，降级为 LIKE 模糊匹配: {}", e.getMessage());
             List<SearchResultVO> records = materialMapper.searchByLike(cleanKeyword, userId);
+            highlightResults(records, cleanKeyword);
             Page<SearchResultVO> voPage = new Page<>(page + 1, size);
             int total = records.size();
             int pages = (int) Math.ceil((double) total / size);
@@ -66,11 +70,14 @@ public class SearchServiceImpl implements SearchService {
         if (keyword == null || keyword.trim().isEmpty()) {
             return Collections.emptyList();
         }
-        List<Long> materialIds = keywordMapper.findMaterialIdsByKeyword(keyword.trim(), userId);
+        String cleanKeyword = keyword.trim();
+        List<Long> materialIds = keywordMapper.findMaterialIdsByKeyword(cleanKeyword, userId);
         if (materialIds == null || materialIds.isEmpty()) {
             return Collections.emptyList();
         }
-        return materialMapper.findByIds(materialIds, userId);
+        List<SearchResultVO> results = materialMapper.findByIds(materialIds, userId);
+        highlightResults(results, cleanKeyword);
+        return results;
     }
 
     @Override
@@ -108,13 +115,14 @@ public class SearchServiceImpl implements SearchService {
         if (courseTag == null || courseTag.trim().isEmpty()) {
             return Collections.emptyList();
         }
+        String cleanKeyword = courseTag.trim();
         QueryWrapper<Material> wrapper = new QueryWrapper<>();
         wrapper.eq("user_id", userId);
-        wrapper.like("course_tag", courseTag.trim());
+        wrapper.like("course_tag", cleanKeyword);
         wrapper.isNull("deleted_at");
         wrapper.orderByDesc("created_at");
         List<Material> materials = materialMapper.selectList(wrapper);
-        return materials.stream().map(m -> {
+        List<SearchResultVO> results = materials.stream().map(m -> {
             SearchResultVO vo = new SearchResultVO();
             vo.setId(m.getId());
             vo.setTitle(m.getTitle());
@@ -123,5 +131,15 @@ public class SearchServiceImpl implements SearchService {
             vo.setCreatedAt(m.getCreatedAt());
             return vo;
         }).collect(Collectors.toList());
+        highlightResults(results, cleanKeyword);
+        return results;
+    }
+
+    private void highlightResults(List<SearchResultVO> records, String keyword) {
+        if (records == null || keyword == null) return;
+        for (SearchResultVO vo : records) {
+            vo.setTitle(HighlightUtils.highlight(vo.getTitle(), keyword));
+            vo.setOcrTextSnippet(HighlightUtils.highlight(vo.getOcrTextSnippet(), keyword));
+        }
     }
 }

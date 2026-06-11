@@ -56,9 +56,14 @@ async function handleLogin() {
       const refreshToken = typeof res.data === 'string' ? '' : (res.data.refreshToken || '')
       if (token) {
         localStorage.setItem('token', token)
-        if (refreshToken) {
+        if (res.data.role) {
+          localStorage.setItem('role', res.data.role)
+        }
+        // 只有勾选记住我时才存 refreshToken，支持长期自动续期
+        if (loginForm.rememberMe && refreshToken) {
           localStorage.setItem('refreshToken', refreshToken)
         }
+        localStorage.setItem('rememberMe', String(loginForm.rememberMe))
         ElMessage.success('登录成功')
         router.push('/')
         // 通知 App.vue 更新登录状态

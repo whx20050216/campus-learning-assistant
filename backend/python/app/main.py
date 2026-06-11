@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import ocr_router, nlp_router, enhance_router, health_router
+from app.routers import ocr_router, nlp_router, enhance_router, health_router, exam, chat
 
 app = FastAPI(title="Campus Learning AI Engine")
 
@@ -27,11 +27,13 @@ app.include_router(ocr_router.router, prefix="/ai", tags=["OCR"])
 app.include_router(nlp_router.router, prefix="/ai", tags=["NLP"])
 app.include_router(enhance_router.router, prefix="/ai", tags=["Enhance"])
 app.include_router(health_router.router, tags=["Health"])
+app.include_router(exam.router, prefix="/ai", tags=["Exam"])
+app.include_router(chat.router, prefix="/ai", tags=["Chat"])
 
 
 @app.get("/")
 def root():
     return {
         "message": "AI Engine is running",
-        "services": ["ocr", "nlp", "enhance", "health"]
+        "services": ["ocr", "nlp", "enhance", "exam", "health"]
     }

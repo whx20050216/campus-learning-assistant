@@ -149,6 +149,9 @@
                   <span>{{ formatTime(row.createdAt) }}</span>
                 </div>
                 <div class="audit-card-actions">
+                  <el-button type="primary" size="small" @click="openAuditDialog(row)">
+                    查看详情
+                  </el-button>
                   <el-button type="success" size="small" :icon="CircleCheck" @click="handleAudit(row, 'approve')">
                     通过
                   </el-button>
@@ -174,6 +177,86 @@
       </el-tabs>
     </template>
   </div>
+
+  <!-- 审核详情弹窗 -->
+  <el-dialog
+    v-model="auditDialogVisible"
+    :title="`《${auditDetail?.title || ''}》审核详情`"
+    width="800px"
+    destroy-on-close
+    @closed="closeAuditDialog"
+  >
+    <el-skeleton v-if="auditDialogLoading" :rows="6" animated />
+    <div v-else-if="auditDetail" class="audit-dialog-body">
+      <!-- 文件预览 -->
+      <div class="preview-box">
+        <iframe
+          v-if="auditDetail.fileType?.toUpperCase?.() === 'PDF' && previewBlobUrl"
+          :src="previewBlobUrl"
+          class="preview-frame"
+        />
+        <img
+          v-else-if="previewBlobUrl"
+          :src="previewBlobUrl"
+          class="preview-image"
+          alt="资料预览"
+        />
+        <div v-else class="preview-placeholder">
+          <el-icon :size="48"><component :is="getFileIcon(auditDetail.fileType)" /></el-icon>
+          <span>预览加载失败</span>
+        </div>
+      </div>
+
+      <!-- 文件信息 -->
+      <div class="detail-meta">
+        <span>类型：{{ auditDetail.fileType || '未知' }}</span>
+        <span v-if="auditDetail.pages">· {{ auditDetail.pages }} 页</span>
+        <span>· 上传者 ID：{{ auditDetail.userId }}</span>
+      </div>
+
+      <!-- OCR 文本（折叠） -->
+      <el-collapse v-model="ocrExpanded" class="ocr-collapse">
+        <el-collapse-item title="OCR 识别文本（辅助参考）" name="1">
+          <div v-if="auditDetail.ocrResult?.ocrText" class="ocr-text">
+            {{ auditDetail.ocrResult.ocrText }}
+          </div>
+          <div v-else class="ocr-empty">暂无 OCR 文本</div>
+        </el-collapse-item>
+      </el-collapse>
+
+      <!-- 关键词 -->
+      <div v-if="auditDetail.keywords?.length" class="detail-section">
+        <div class="section-label">关键词</div>
+        <div class="tag-list">
+          <el-tag v-for="(kw, idx) in auditDetail.keywords" :key="idx" size="small" effect="light">
+            {{ kw.keyword }}
+          </el-tag>
+        </div>
+      </div>
+
+      <!-- 知识点 -->
+      <div v-if="auditDetail.knowledgePoints?.length" class="detail-section">
+        <div class="section-label">知识点</div>
+        <div class="tag-list">
+          <el-tag
+            v-for="(kp, idx) in auditDetail.knowledgePoints"
+            :key="idx"
+            size="small"
+            type="success"
+            effect="light"
+          >
+            {{ kp.content }}
+          </el-tag>
+        </div>
+      </div>
+    </div>
+
+    <template #footer>
+      <el-button @click="closeAuditDialog">取消</el-button>
+      <el-button type="success" @click="handleAuditFromDialog('approve')">通过</el-button>
+      <el-button type="danger" @click="handleAuditFromDialog('reject')">拒绝</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -185,7 +268,8 @@ import {
   Lock, Unlock, CircleCheck, CircleClose,
   Document, Picture, Link
 } from '@element-plus/icons-vue'
-import { getUsers, freezeUser, getSystemStatus, getPendingMaterials, auditMaterial } from '@/api/admin'
+import { getUsers, freezeUser, getSystemStatus, getPendingMaterials, auditMaterial, getAdminMaterialDetail } from '@/api/admin'
+import { downloadMaterial } from '@/api/material'
 import type { User as UserType, SystemStatusVO, Material } from '@/api/admin'
 
 const users = ref<UserType[]>([])
@@ -202,6 +286,13 @@ const pendingLoading = ref(false)
 const pendingPage = ref(1)
 const pendingPageSize = ref(10)
 const pendingTotal = ref(0)
+
+// 审核详情弹窗
+const auditDialogVisible = ref(false)
+const auditDetail = ref<any>(null)
+const previewBlobUrl = ref('')
+const ocrExpanded = ref(false)
+const auditDialogLoading = ref(false)
 
 function parseCurrentUser() {
   const token = localStorage.getItem('token')
@@ -335,6 +426,58 @@ function onTabChange(tabName: string | number) {
   if (tabName === 'materials') {
     fetchPendingMaterials()
   }
+}
+
+async function openAuditDialog(row: Material) {
+  auditDialogVisible.value = true
+  auditDialogLoading.value = true
+  ocrExpanded.value = false
+  previewBlobUrl.value = ''
+  try {
+    const res = await getAdminMaterialDetail(row.id)
+    if (res.code === 200 && res.data) {
+      auditDetail.value = res.data
+      await loadPreview(row.id, row.fileType)
+    } else {
+      ElMessage.error(res.msg || '获取详情失败')
+      auditDialogVisible.value = false
+    }
+  } catch {
+    ElMessage.error('获取详情失败')
+    auditDialogVisible.value = false
+  } finally {
+    auditDialogLoading.value = false
+  }
+}
+
+async function loadPreview(id: number, fileType?: string) {
+  const type = fileType?.toUpperCase?.() || 'PDF'
+  const mimeType = type === 'PDF' ? 'application/pdf'
+                 : type === 'PNG' ? 'image/png'
+                 : 'image/jpeg'
+  try {
+    const res = await downloadMaterial(id, true)
+    const blob = new Blob([res.data], { type: mimeType })
+    previewBlobUrl.value = URL.createObjectURL(blob)
+  } catch (err) {
+    console.error('预览加载失败', err)
+  }
+}
+
+function closeAuditDialog() {
+  if (previewBlobUrl.value) {
+    URL.revokeObjectURL(previewBlobUrl.value)
+    previewBlobUrl.value = ''
+  }
+  auditDetail.value = null
+  auditDialogVisible.value = false
+}
+
+async function handleAuditFromDialog(action: 'approve' | 'reject') {
+  if (!auditDetail.value) return
+  const row = { id: auditDetail.value.id, title: auditDetail.value.title } as Material
+  await handleAudit(row, action)
+  closeAuditDialog()
 }
 
 let statusTimer: ReturnType<typeof setInterval> | null = null
@@ -605,5 +748,89 @@ onUnmounted(() => {
   justify-content: center;
   padding: var(--space-12);
   color: var(--text-secondary);
+}
+
+/* 审核详情弹窗 */
+.audit-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.preview-box {
+  width: 100%;
+  height: 360px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.preview-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+}
+
+.detail-meta {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.ocr-collapse {
+  margin-top: var(--space-2);
+}
+
+.ocr-text {
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+}
+
+.ocr-empty {
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  padding: var(--space-3);
+}
+
+.detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.section-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 </style>

@@ -27,6 +27,10 @@
             <el-icon :size="18"><Document /></el-icon>
             <span>学习计划</span>
           </RouterLink>
+          <RouterLink to="/exams" class="nav-link">
+            <el-icon :size="18"><MagicStick /></el-icon>
+            <span>智能组卷</span>
+          </RouterLink>
           <RouterLink to="/analysis" class="nav-link">
             <el-icon :size="18"><TrendCharts /></el-icon>
             <span>数据分析</span>
@@ -84,11 +88,13 @@
         <RouterView />
       </transition>
     </main>
+    <ChatWidget />
   </div>
 </template>
 
 <script setup lang="ts">
 import { RouterLink, RouterView, useRouter, useRoute } from 'vue-router'
+import ChatWidget from './views/ChatWidget.vue'
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
@@ -97,6 +103,8 @@ import {
   Upload,
   Search,
   Document,
+  DocumentChecked,
+  MagicStick,
   TrendCharts,
   Delete,
   Setting,
@@ -115,18 +123,8 @@ const reminders = computed(() => planStore.reminders)
 const reminderLoaded = ref(false)
 
 function checkAdmin() {
-  const token = localStorage.getItem('token')
-  if (!token) return false
-  const parts = token.split('.')
-  if (parts.length < 2) return false
-  try {
-    const base64 = parts[1]
-    const json = atob(base64.replace(/-/g, '+').replace(/_/g, '/'))
-    const payload = JSON.parse(json)
-    return payload.role === 'ADMIN'
-  } catch {
-    return false
-  }
+  const role = localStorage.getItem('role')
+  return role === 'ADMIN'
 }
 
 async function fetchUserInfo() {
@@ -167,6 +165,9 @@ function handleNavClick(e: MouseEvent) {
 
 function logout() {
   localStorage.removeItem('token')
+  localStorage.removeItem('refreshToken')
+  localStorage.removeItem('role')
+  localStorage.removeItem('rememberMe')
   currentUser.value = null
   isAdmin.value = false
   ElMessage.success('已退出登录')
@@ -183,7 +184,7 @@ async function handleReadReminder(planId: number) {
 }
 
 function onReminderVisibleChange(visible: boolean) {
-  if (visible && reminders.value.length === 0) {
+  if (visible) {
     planStore.fetchReminders()
   }
 }

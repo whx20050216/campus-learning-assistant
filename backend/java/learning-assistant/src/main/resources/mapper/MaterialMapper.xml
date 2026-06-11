@@ -23,7 +23,10 @@
           AND m.user_id = #{userId}
           AND (MATCH(m.title) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE)
            OR MATCH(o.ocr_text) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE))
-        ORDER BY m.created_at DESC
+        ORDER BY (
+            IFNULL(MATCH(m.title) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE), 0) * 0.6
+            + IFNULL(MATCH(o.ocr_text) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE), 0) * 0.4
+        ) DESC
     </select>
 
     <select id="searchByLike" resultType="com.campus.learning.vo.SearchResultVO">

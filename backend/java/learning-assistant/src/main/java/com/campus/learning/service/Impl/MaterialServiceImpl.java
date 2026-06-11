@@ -125,23 +125,28 @@ public class MaterialServiceImpl implements MaterialService {
             throw new IllegalArgumentException("单文件大小不能超过50MB");
         }
 
-        // 3. 计算 MD5
-        String md5 = calculateMd5(file.getBytes());
+        // 3. 计算 MD5（流式，避免大文件全量读入内存）
+        String md5 = calculateMd5(file.getInputStream());
 
         // 4. MD5 查重（当前用户）
         QueryWrapper<Material> md5Wrapper = new QueryWrapper<>();
         md5Wrapper.eq("user_id", userId);
         md5Wrapper.eq("md5", md5);
+        md5Wrapper.isNull("deleted_at");
         Material existing = materialMapper.selectOne(md5Wrapper);
         if (existing != null) {
-            log.info("MD5 重复，直接返回已有资料: materialId={}", existing.getId());
-            return existing;
+            log.info("MD5 重复，拒绝上传: materialId={}", existing.getId());
+            throw new IllegalArgumentException("该文件已存在于您的资料库中");
         }
 
         // 5. 存储配额校验
         User user = userMapper.selectById(userId);
-        if (user != null && user.getUsedStorage() + file.getSize() > user.getStorageQuota()) {
-            throw new IllegalArgumentException("存储空间已满，请删除旧资料后重试");
+        if (user != null) {
+            long usedStorage = user.getUsedStorage() != null ? user.getUsedStorage() : 0L;
+            long quota = user.getStorageQuota() != null ? user.getStorageQuota() : 0L;
+            if (usedStorage + file.getSize() > quota) {
+                throw new IllegalArgumentException("存储空间已满，请删除旧资料后重试");
+            }
         }
 
         // 6. MinIO 上传
@@ -180,19 +185,19 @@ public class MaterialServiceImpl implements MaterialService {
         }
 
         // 8. 同步处理 OCR（30秒总超时保护）
-        long startTime = System.currentTimeMillis();
         try {
-            self.processOcr(material.getId(), uniqueFilename);
-            long elapsed = System.currentTimeMillis() - startTime;
-            log.info("OCR 总耗时: {}ms, materialId={}", elapsed, material.getId());
-            if (elapsed > PROCESS_TIMEOUT_MS) {
-                log.warn("OCR 处理超时: materialId={}", material.getId());
-                Material update = new Material();
-                update.setId(material.getId());
-                update.setStatus("failed");
-                update.setUpdatedAt(LocalDateTime.now());
-                materialMapper.updateById(update);
-            }
+            java.util.concurrent.CompletableFuture<Void> future = java.util.concurrent.CompletableFuture.runAsync(() -> {
+                self.processOcr(material.getId(), uniqueFilename);
+            });
+            future.get(PROCESS_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+            log.info("OCR 处理完成: materialId={}", material.getId());
+        } catch (java.util.concurrent.TimeoutException e) {
+            log.error("OCR 处理超时: materialId={}", material.getId());
+            Material update = new Material();
+            update.setId(material.getId());
+            update.setStatus("failed");
+            update.setUpdatedAt(LocalDateTime.now());
+            materialMapper.updateById(update);
         } catch (Exception e) {
             log.error("OCR 处理异常: materialId={}, error={}", material.getId(), e.getMessage());
             Material update = new Material();
@@ -200,7 +205,6 @@ public class MaterialServiceImpl implements MaterialService {
             update.setStatus("failed");
             update.setUpdatedAt(LocalDateTime.now());
             materialMapper.updateById(update);
-            // 不抛出异常，确保前端能拿到 materialId
         }
 
         return materialMapper.selectById(material.getId());
@@ -416,6 +420,44 @@ public class MaterialServiceImpl implements MaterialService {
     }
 
     @Override
+    public MaterialDetailVO getDetailForAdmin(Long id) {
+        Material material = materialMapper.selectById(id);
+        if (material == null) {
+            return null;
+        }
+
+        MaterialDetailVO vo = new MaterialDetailVO();
+        BeanUtils.copyProperties(material, vo);
+
+        OcrResult ocr = ocrResultMapper.findByMaterialId(id);
+        if (ocr != null) {
+            OcrResultVO ocrVo = new OcrResultVO();
+            BeanUtils.copyProperties(ocr, ocrVo);
+            vo.setOcrResult(ocrVo);
+        }
+
+        List<Keyword> keywords = keywordMapper.findByMaterialId(id);
+        List<KeywordVO> keywordVos = keywords.stream().map(k -> {
+            KeywordVO kv = new KeywordVO();
+            kv.setKeyword(k.getKeyword());
+            kv.setWeight(k.getWeight());
+            return kv;
+        }).collect(Collectors.toList());
+        vo.setKeywords(keywordVos);
+
+        List<KnowledgePoint> knowledgePoints = knowledgePointMapper.findByMaterialId(id);
+        List<KnowledgePointVO> knowledgePointVos = knowledgePoints.stream().map(kp -> {
+            KnowledgePointVO kpv = new KnowledgePointVO();
+            kpv.setContent(kp.getContent());
+            kpv.setType(kp.getType());
+            return kpv;
+        }).collect(Collectors.toList());
+        vo.setKnowledgePoints(knowledgePointVos);
+
+        return vo;
+    }
+
+    @Override
     public Material getMaterialById(Long id) {
         return materialMapper.selectById(id);
     }
@@ -465,13 +507,26 @@ public class MaterialServiceImpl implements MaterialService {
         }
 
         if (permanent) {
-            // 永久删除前：解除与学习任务的关联（防御性修复）
+            // 永久删除前：先删 MinIO 文件，失败则抛异常回滚事务，避免 DB 已删文件残留
+            try {
+                minioClient.removeObject(
+                        RemoveObjectArgs.builder()
+                                .bucket(bucketName)
+                                .object(material.getFileUrl())
+                                .build()
+                );
+            } catch (Exception e) {
+                log.error("MinIO 文件删除失败: materialId={}, fileUrl={}", id, material.getFileUrl(), e);
+                throw new RuntimeException("文件删除失败，请稍后重试");
+            }
+
+            // 解除与学习任务的关联（防御性修复）
             com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<StudyTask> taskWrapper = new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<>();
             taskWrapper.eq("material_id", id);
             taskWrapper.set("material_id", null);
             studyTaskMapper.update(null, taskWrapper);
 
-            // 永久删除：MinIO + DB 级联删除
+            // 级联删除 DB 记录
             QueryWrapper<OcrResult> ocrWrapper = new QueryWrapper<>();
             ocrWrapper.eq("material_id", id);
             ocrResultMapper.delete(ocrWrapper);
@@ -489,19 +544,9 @@ public class MaterialServiceImpl implements MaterialService {
             // 回减用户已用存储
             User user = userMapper.selectById(userId);
             if (user != null && material.getFileSize() != null) {
-                user.setUsedStorage(Math.max(0, user.getUsedStorage() - material.getFileSize()));
+                long usedStorage = user.getUsedStorage() != null ? user.getUsedStorage() : 0L;
+                user.setUsedStorage(Math.max(0, usedStorage - material.getFileSize()));
                 userMapper.updateById(user);
-            }
-
-            try {
-                minioClient.removeObject(
-                        RemoveObjectArgs.builder()
-                                .bucket(bucketName)
-                                .object(material.getFileUrl())
-                                .build()
-                );
-            } catch (Exception e) {
-                log.error("MinIO 文件删除失败: materialId={}, fileUrl={}", id, material.getFileUrl(), e);
             }
         } else {
             // 逻辑删除：移至回收站
@@ -522,6 +567,9 @@ public class MaterialServiceImpl implements MaterialService {
         }
         if (!material.getUserId().equals(userId)) {
             throw new IllegalArgumentException("无权操作该资料");
+        }
+        if ("admin".equals(material.getDeletedBy())) {
+            throw new IllegalArgumentException("管理员删除的资料不可恢复");
         }
         com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Material> wrapper = new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<>();
         wrapper.eq("id", id);
@@ -575,6 +623,9 @@ public class MaterialServiceImpl implements MaterialService {
         if (!material.getUserId().equals(userId)) {
             throw new IllegalArgumentException("无权访问该资料");
         }
+        if (material.getDeletedAt() != null || "admin".equals(material.getDeletedBy())) {
+            throw new IllegalArgumentException("资料已被删除或不可访问");
+        }
         if (minioExternalEndpoint == null || minioExternalEndpoint.isBlank()) {
             // 未配置外部地址时，回退到内部 client（本地开发场景）
             try {
@@ -604,6 +655,9 @@ public class MaterialServiceImpl implements MaterialService {
         if (!material.getUserId().equals(userId)) {
             throw new IllegalArgumentException("无权操作该资料");
         }
+        if (material.getDeletedAt() != null || "admin".equals(material.getDeletedBy())) {
+            throw new IllegalArgumentException("资料已被删除或不可访问");
+        }
         if (title != null) {
             material.setTitle(title);
         }
@@ -626,6 +680,9 @@ public class MaterialServiceImpl implements MaterialService {
         }
         if (!material.getUserId().equals(userId)) {
             throw new IllegalArgumentException("无权操作该资料");
+        }
+        if (material.getDeletedAt() != null || "admin".equals(material.getDeletedBy())) {
+            throw new IllegalArgumentException("资料已被删除或不可访问");
         }
         // 去重、截断
         List<String> clean = keywords.stream()
@@ -671,9 +728,15 @@ public class MaterialServiceImpl implements MaterialService {
         Pattern formulaPattern = Pattern.compile("([A-Za-z0-9\\s]*?[∑∫=\\+\\-\\*/^]{1,}[A-Za-z0-9\\s\\(\\)]{2,50})");
         Matcher fm = formulaPattern.matcher(text);
         while (fm.find()) {
+            String matched = fm.group();
+            // 过滤：包含过多中文字符的匹配项视为普通文本而非公式
+            long chineseCount = matched.codePoints().filter(c -> c >= 0x4e00 && c <= 0x9fff).count();
+            if (chineseCount > 3) {
+                continue;
+            }
             KnowledgePoint kp = new KnowledgePoint();
             kp.setMaterialId(materialId);
-            kp.setContent(fm.group());
+            kp.setContent(matched);
             kp.setType("formula");
             points.add(kp);
         }
@@ -691,9 +754,16 @@ public class MaterialServiceImpl implements MaterialService {
         return points.stream().limit(20).collect(Collectors.toList());
     }
 
-    private String calculateMd5(byte[] bytes) throws Exception {
+    private String calculateMd5(java.io.InputStream inputStream) throws Exception {
         MessageDigest md = MessageDigest.getInstance("MD5");
-        byte[] digest = md.digest(bytes);
+        try (java.io.InputStream is = inputStream) {
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = is.read(buffer)) != -1) {
+                md.update(buffer, 0, len);
+            }
+        }
+        byte[] digest = md.digest();
         StringBuilder sb = new StringBuilder();
         for (byte b : digest) {
             sb.append(String.format("%02x", b));

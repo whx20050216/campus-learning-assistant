@@ -51,6 +51,25 @@ public class ScheduledTaskService {
         List<Material> list = materialMapper.selectList(wrapper);
         int count = 0;
         for (Material m : list) {
+            // 先删 MinIO 物理文件，成功后再删 DB，避免 DB 已删文件残留
+            boolean minioDeleted = false;
+            try {
+                minioClient.removeObject(
+                        RemoveObjectArgs.builder()
+                                .bucket(bucketName)
+                                .object(m.getFileUrl())
+                                .build()
+                );
+                minioDeleted = true;
+            } catch (Exception e) {
+                log.error("MinIO 文件删除失败: materialId={}, fileUrl={}", m.getId(), m.getFileUrl(), e);
+            }
+
+            if (!minioDeleted) {
+                log.warn("跳过数据库删除，等待下次清理: materialId={}", m.getId());
+                continue;
+            }
+
             // 级联删除 ocr_result / keyword / knowledge_point
             QueryWrapper<com.campus.learning.entity.OcrResult> ocrWrapper = new QueryWrapper<>();
             ocrWrapper.eq("material_id", m.getId());
@@ -63,18 +82,6 @@ public class ScheduledTaskService {
             QueryWrapper<com.campus.learning.entity.KnowledgePoint> kpWrapper = new QueryWrapper<>();
             kpWrapper.eq("material_id", m.getId());
             knowledgePointMapper.delete(kpWrapper);
-
-            // 删除 MinIO 物理文件
-            try {
-                minioClient.removeObject(
-                        RemoveObjectArgs.builder()
-                                .bucket(bucketName)
-                                .object(m.getFileUrl())
-                                .build()
-                );
-            } catch (Exception e) {
-                log.error("MinIO 文件删除失败: materialId={}, fileUrl={}", m.getId(), m.getFileUrl(), e);
-            }
 
             materialMapper.deleteById(m.getId());
             count++;
@@ -115,6 +122,10 @@ public class ScheduledTaskService {
         for (StudyPlan plan : plans) {
             try {
                 planService.calculateProgress(plan.getId());
+                // 学习中断风险检测
+                if (planService.hasInterruptionRisk(plan.getId())) {
+                    log.warn("[学习中断风险] 计划{}连续3天未打卡", plan.getId());
+                }
                 // 超期检测
                 if (today.isAfter(plan.getEndDate()) && plan.getProgress() < 100.0) {
                     UpdateWrapper<StudyPlan> update = new UpdateWrapper<>();

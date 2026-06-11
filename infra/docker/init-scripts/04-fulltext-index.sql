@@ -32,7 +32,7 @@ END //
 
 DELIMITER ;
 
-CALL AddColumnIfNotExists('materials', 'audit_status', 'VARCHAR(50) DEFAULT "pending" COMMENT "审核状态：pending/approved/rejected"');
+CALL AddColumnIfNotExists('materials', 'audit_status', 'VARCHAR(50) DEFAULT \'approved\' COMMENT "审核状态：pending/approved/rejected"');
 CALL AddColumnIfNotExists('materials', 'deleted_at', 'DATETIME DEFAULT NULL COMMENT "删除时间"');
 CALL AddColumnIfNotExists('materials', 'deleted_by', 'VARCHAR(100) DEFAULT NULL COMMENT "删除操作人"');
 

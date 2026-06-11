@@ -35,6 +35,8 @@ public class PlanVO {
 
     private Integer version;
 
+    private Integer interruptionRisk;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

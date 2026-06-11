@@ -48,6 +48,14 @@
               <el-tag :type="statusType(plan.status)" size="small" effect="light">
                 {{ statusLabel(plan.status) }}
               </el-tag>
+              <el-tag
+                v-if="plan.interruptionRisk === 1"
+                type="danger"
+                size="small"
+                effect="light"
+              >
+                学习中断风险
+              </el-tag>
               <el-button
                 type="danger"
                 size="small"

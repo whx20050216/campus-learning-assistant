@@ -81,7 +81,7 @@
                 <!-- 标题行 -->
                 <div class="result-title-row">
                   <h3 class="result-filename" @click="viewDetail(item.id)">
-                    {{ item.filename || item.title }}
+                    <span v-html="item.title || item.filename"></span>
                   </h3>
                   <span
                     v-if="item.ocrConfidence !== undefined && item.ocrConfidence !== null"
@@ -93,7 +93,7 @@
                 </div>
 
                 <!-- 摘要 -->
-                <p class="result-summary">{{ item.summary || '暂无摘要' }}</p>
+                <p class="result-summary" v-html="item.ocrTextSnippet || item.summary || '暂无摘要'"></p>
 
                 <!-- 标签行 -->
                 <div class="result-tags-row">

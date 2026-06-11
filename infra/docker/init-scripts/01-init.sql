@@ -1,5 +1,5 @@
--- 创建应用用户（不用root连接）
-CREATE USER IF NOT EXISTS 'cla_user'@'%' IDENTIFIED BY 'ClaPassword2024';
+-- 创建应用用户（已由 docker-compose 环境变量 MYSQL_USER/MYSQL_PASSWORD 自动创建）
+-- 仅保留授权语句
 GRANT ALL PRIVILEGES ON learning_assistant.* TO 'cla_user'@'%';
 FLUSH PRIVILEGES;
 
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS ocr_result (
     confidence FLOAT COMMENT '置信度',
     source VARCHAR(50) DEFAULT 'local' COMMENT '处理来源',
     engine VARCHAR(100) COMMENT '识别引擎',
-    summary VARCHAR(500) COMMENT '文本摘要',
+    summary TEXT COMMENT '文本摘要',
     processing_time_ms INT COMMENT '处理耗时(毫秒)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -148,5 +148,11 @@ CREATE TABLE IF NOT EXISTS study_record (
     INDEX idx_task_id (task_id),
     INDEX idx_user_date (user_id, study_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学习打卡记录表';
+
+-- =============================================
+-- 9. 预置管理员账号
+-- =============================================
+INSERT IGNORE INTO users (student_no, username, email, password_hash, role, status, storage_quota)
+VALUES ('admin', '管理员', 'admin@campus.edu', '$2b$10$lNbG2V2Dw14gwpR.5PYBfuC6bvSkG022oPqV/E3KRjwedzAn/BVRm', 'ADMIN', 1, 5368709120);
 
 

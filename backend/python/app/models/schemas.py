@@ -49,3 +49,33 @@ class SummaryResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     service: str
+
+
+# ========== AI 问答相关模型 ==========
+
+class ChatStreamRequest(BaseModel):
+    messages: list = Field(default_factory=list, description="OpenAI 格式的消息列表")
+
+
+# ========== 智能组卷相关模型 ==========
+
+class ExamGenerateRequest(BaseModel):
+    summaries: List[str] = Field(default_factory=list, description="资料摘要列表")
+    knowledgePoints: List[str] = Field(default_factory=list, description="知识点列表")
+    questionCount: int = Field(default=10, ge=1, le=50, description="题目数量")
+    types: List[str] = Field(default_factory=lambda: ["single", "multiple", "judge", "essay"], description="题型列表")
+    difficulty: str = Field(default="medium", description="难度: easy/medium/hard")
+
+
+class ExamQuestionItem(BaseModel):
+    type: str = Field(..., description="题型: single/multiple/judge/essay")
+    content: str = Field(..., description="题目内容")
+    options: Optional[List[str]] = Field(default=None, description="选项列表")
+    answer: Optional[str] = Field(default=None, description="标准答案")
+    analysis: Optional[str] = Field(default=None, description="解析")
+    difficulty: str = Field(default="medium", description="难度")
+    knowledgePoint: Optional[str] = Field(default=None, description="知识点")
+
+
+class ExamGenerateResponse(BaseModel):
+    questions: List[ExamQuestionItem] = Field(default_factory=list, description="生成的题目列表")

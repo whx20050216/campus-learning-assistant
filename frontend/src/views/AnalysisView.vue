@@ -74,17 +74,33 @@
             <div class="data-card-compare compare-neutral">份学习资料</div>
           </div>
         </div>
+        <div class="data-card" style="--card-accent: var(--danger-500);">
+          <div class="data-card-topbar"></div>
+          <div class="data-card-body">
+            <div class="data-card-label">总试卷数</div>
+            <div class="data-card-value">{{ dashboard.examCount || 0 }}</div>
+            <div class="data-card-compare compare-neutral">份智能试卷</div>
+          </div>
+        </div>
       </div>
 
-      <!-- 中部双栏 -->
+      <!-- 中部三栏 -->
       <div class="chart-row">
         <div class="chart-card">
           <h3 class="card-title">
             <el-icon><PieChart /></el-icon>
-            课程分布
+            课程分布（资料）
           </h3>
           <v-chart class="pie-chart" :option="pieOption" autoresize />
           <div v-if="!dashboard.courseDistribution?.length" class="empty-chart">暂无资料数据</div>
+        </div>
+        <div class="chart-card">
+          <h3 class="card-title">
+            <el-icon><PieChart /></el-icon>
+            课程分布（试卷）
+          </h3>
+          <v-chart class="pie-chart" :option="examPieOption" autoresize />
+          <div v-if="!dashboard.examDistribution?.length" class="empty-chart">暂无试卷数据</div>
         </div>
         <div class="chart-card">
           <h3 class="card-title">
@@ -138,6 +154,7 @@ const hasData = computed(() => {
     d.weeklyDuration ||
     d.lastWeekDuration ||
     (d.courseDistribution && d.courseDistribution.length) ||
+    (d.examDistribution && d.examDistribution.length) ||
     (d.currentProgress && d.currentProgress.length)
   )
 })
@@ -156,6 +173,40 @@ function goPlan() {
 
 const pieOption = computed(() => {
   const data = dashboard.value?.courseDistribution || []
+  return {
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: {c} ({d}%)',
+    },
+    legend: {
+      bottom: '0',
+      left: 'center',
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['40%', '70%'],
+        avoidLabelOverlap: false,
+        itemStyle: {
+          borderRadius: 8,
+          borderColor: '#fff',
+          borderWidth: 2,
+        },
+        label: {
+          show: true,
+          formatter: '{b}\n{c}',
+        },
+        data: data.map((item) => ({
+          name: item.name,
+          value: item.value,
+        })),
+      },
+    ],
+  }
+})
+
+const examPieOption = computed(() => {
+  const data = dashboard.value?.examDistribution || []
   return {
     tooltip: {
       trigger: 'item',
@@ -268,12 +319,18 @@ onMounted(() => {
 /* 顶部数据卡行 */
 .data-cards-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--space-4);
   margin-bottom: var(--space-6);
 }
 
 @media (max-width: 1200px) {
+  .data-cards-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
   .data-cards-row {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -349,11 +406,17 @@ onMounted(() => {
   color: var(--text-tertiary);
 }
 
-/* 中部双栏 */
+/* 中部三栏 */
 .chart-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-4);
+}
+
+@media (max-width: 1200px) {
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .chart-card {

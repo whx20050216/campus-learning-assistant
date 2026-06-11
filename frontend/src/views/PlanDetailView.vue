@@ -19,6 +19,14 @@
         <div class="info-card-header">
           <div class="info-card-title">
             <h1 class="plan-title">{{ plan.name }}</h1>
+            <el-tag
+              v-if="plan.interruptionRisk === 1"
+              type="danger"
+              size="small"
+              effect="light"
+            >
+              ⚠️ 学习中断风险
+            </el-tag>
             <el-tag :type="statusType(plan.status)" size="small" effect="light">
               {{ statusLabel(plan.status) }}
             </el-tag>
@@ -98,6 +106,9 @@
       <div v-if="plan.materials?.length" class="materials-card">
         <h3 class="section-title">
           计划包含资料
+          <el-button type="primary" size="small" @click.stop="openGenerateExam">
+            <el-icon><MagicStick /></el-icon> 一键智能组卷
+          </el-button>
         </h3>
         <div class="materials-list">
           <div
@@ -258,6 +269,36 @@
           </div>
         </template>
       </el-dialog>
+
+      <!-- 一键组卷弹窗 -->
+      <el-dialog v-model="generateExamVisible" title="一键智能组卷" width="500px">
+        <el-form label-width="100px">
+          <el-form-item label="课程标签">
+            <el-input v-model="generateExamTag" placeholder="请输入课程标签，用于分类统计" />
+            <div class="input-suffix" style="margin-top: 4px;">
+              基于 {{ plan.materials?.length || 0 }} 份资料生成 {{ generateExamCount }} 道题
+            </div>
+          </el-form-item>
+          <el-form-item label="题目数量">
+            <el-slider v-model="generateExamCount" :min="5" :max="30" show-stops />
+          </el-form-item>
+          <el-form-item label="难度">
+            <el-radio-group v-model="generateExamDifficulty">
+              <el-radio-button label="easy">简单</el-radio-button>
+              <el-radio-button label="medium">中等</el-radio-button>
+              <el-radio-button label="hard">困难</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <div class="dialog-footer">
+            <el-button size="large" @click="generateExamVisible = false">取消</el-button>
+            <el-button type="primary" size="large" :loading="generateExamLoading" @click="submitGenerateExam">
+              开始组卷
+            </el-button>
+          </div>
+        </template>
+      </el-dialog>
     </template>
 
     <div v-else class="loading-state">
@@ -270,7 +311,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Loading, ArrowLeft, Calendar, Clock, Document, Histogram, List, Check, CircleCheck, Edit, Collection, Picture, Link } from '@element-plus/icons-vue'
+import { Loading, ArrowLeft, Calendar, Clock, Document, Histogram, List, Check, CircleCheck, Edit, Collection, Picture, Link, MagicStick } from '@element-plus/icons-vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart } from 'echarts/charts'
@@ -297,6 +338,55 @@ const checkInForm = ref({ duration: 30, content: '', studyDate: '' })
 const editPlanVisible = ref(false)
 const editPlanLoading = ref(false)
 const editPlanForm = ref({ name: '', endDate: '', dailyHours: 1 })
+
+const generateExamVisible = ref(false)
+const generateExamLoading = ref(false)
+const generateExamTag = ref('')
+const generateExamCount = ref(10)
+const generateExamDifficulty = ref('medium')
+
+function openGenerateExam() {
+  const mats = plan.value?.materials || []
+  const tags = [...new Set(mats.map((m) => m.courseTag).filter(Boolean))]
+  generateExamTag.value = tags.length === 1 ? tags[0] : ''
+  generateExamCount.value = 10
+  generateExamDifficulty.value = 'medium'
+  generateExamVisible.value = true
+}
+
+async function submitGenerateExam() {
+  if (!generateExamTag.value.trim()) {
+    ElMessage.warning('请输入课程标签')
+    return
+  }
+  const mats = plan.value?.materials || []
+  if (mats.length === 0) {
+    ElMessage.warning('计划中没有资料，无法组卷')
+    return
+  }
+  generateExamLoading.value = true
+  try {
+    const { generateExamFromPlan } = await import('@/api/exam')
+    const res = await generateExamFromPlan({
+      studyPlanId: plan.value!.id,
+      materialIds: mats.map((m) => m.id),
+      courseTag: generateExamTag.value.trim(),
+      questionCount: generateExamCount.value,
+      difficulty: generateExamDifficulty.value,
+    })
+    if (res.code === 200 && res.data) {
+      ElMessage.success('组卷成功')
+      generateExamVisible.value = false
+      router.push(`/exams/${res.data.id}/answer`)
+    } else {
+      ElMessage.error(res.msg || '组卷失败')
+    }
+  } catch (err: any) {
+    ElMessage.error(err.response?.data?.msg || err.message || '组卷失败')
+  } finally {
+    generateExamLoading.value = false
+  }
+}
 
 const chartOption = computed(() => {
   const list = tasks.value

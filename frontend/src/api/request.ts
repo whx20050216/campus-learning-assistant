@@ -6,9 +6,24 @@ const request = axios.create({
   timeout: 30000,
 })
 
+function getToken(): string | null {
+  return localStorage.getItem('token')
+}
+
+function getRefreshToken(): string | null {
+  return localStorage.getItem('refreshToken')
+}
+
+function removeAllTokens() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('refreshToken')
+  localStorage.removeItem('role')
+  localStorage.removeItem('rememberMe')
+}
+
 request.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = getToken()
     if (token && token !== 'undefined') {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -34,21 +49,32 @@ request.interceptors.response.use(
       originalRequest._retry = true
 
       try {
-        const refreshToken = localStorage.getItem('refreshToken')
-        if (!refreshToken) throw new Error('No refresh token')
+        const refreshToken = getRefreshToken()
+        // 不勾选记住我时没有 refreshToken，直接登出
+        if (!refreshToken) {
+          removeAllTokens()
+          ElMessage.error('登录已过期，请重新登录')
+          window.location.href = '/login'
+          return Promise.reject(error)
+        }
 
-        const res = await axios.post('/api/auth/refresh', { refreshToken })
+        const rememberMe = localStorage.getItem('rememberMe') === 'true'
+        const res = await axios.post('/api/auth/refresh', { refreshToken, rememberMe })
         const tokenData = res.data?.data
 
         if (tokenData?.accessToken) {
           localStorage.setItem('token', tokenData.accessToken)
-          localStorage.setItem('refreshToken', tokenData.refreshToken)
+          if (tokenData.refreshToken) {
+            localStorage.setItem('refreshToken', tokenData.refreshToken)
+          }
+          if (tokenData.role) {
+            localStorage.setItem('role', tokenData.role)
+          }
           originalRequest.headers['Authorization'] = 'Bearer ' + tokenData.accessToken
           return request(originalRequest)
         }
       } catch (refreshError) {
-        localStorage.removeItem('token')
-        localStorage.removeItem('refreshToken')
+        removeAllTokens()
         ElMessage.error('登录已过期，请重新登录')
         window.location.href = '/login'
         return Promise.reject(refreshError)
@@ -56,7 +82,14 @@ request.interceptors.response.use(
     }
 
     if (error.response?.status === 403) {
-      ElMessage.error('权限不足，无法访问该资源')
+      const msg = error.response?.data?.msg || ''
+      if (msg.includes('冻结')) {
+        removeAllTokens()
+        ElMessage.error('账号已被冻结，请联系管理员')
+        window.location.href = '/login'
+      } else {
+        ElMessage.error('权限不足，无法访问该资源')
+      }
     } else if (error.response?.status === 404) {
       ElMessage.error('请求的资源不存在')
     } else if (error.response?.status === 500) {

@@ -35,4 +35,9 @@ public interface PlanService {
      * 标记指定计划的提醒为已读
      */
     Result<Void> markReminderRead(Long planId, Long userId);
+
+    /**
+     * 检测学习计划是否存在学习中断风险（连续3天未打卡）
+     */
+    boolean hasInterruptionRisk(Long planId);
 }

@@ -140,6 +140,9 @@ public class PlanServiceImpl implements PlanService {
         if (studyDate.isAfter(LocalDate.now())) {
             return Result.error("不能补录未来日期的学习记录");
         }
+        if (!studyDate.equals(task.getTaskDate())) {
+            return Result.error("打卡日期与任务日期不符");
+        }
 
         // 创建学习记录
         StudyRecord record = new StudyRecord();
@@ -191,11 +194,32 @@ public class PlanServiceImpl implements PlanService {
             return 0.0f;
         }
 
-        long completedCount = tasks.stream()
-                .filter(t -> "completed".equals(t.getStatus()))
-                .count();
+        // 计算总预设学习时间（小时）
+        float totalPlannedHours = 0.0f;
+        for (StudyTask task : tasks) {
+            if (task.getPlannedHours() != null) {
+                totalPlannedHours += task.getPlannedHours();
+            }
+        }
 
-        float progress = (float) completedCount / tasks.size() * 100;
+        // 计算已学习时间（小时）：duration 单位为分钟，需除以 60
+        float completedHours = 0.0f;
+        for (StudyTask task : tasks) {
+            if ("completed".equals(task.getStatus())) {
+                List<StudyRecord> records = studyRecordMapper.findByTaskId(task.getId());
+                for (StudyRecord record : records) {
+                    if (record.getDuration() != null) {
+                        completedHours += record.getDuration() / 60.0f;
+                    }
+                }
+            }
+        }
+
+        float progress = 0.0f;
+        if (totalPlannedHours > 0) {
+            progress = completedHours / totalPlannedHours * 100;
+        }
+        progress = Math.min(100.0f, Math.max(0.0f, progress));
         progress = Math.round(progress * 10.0f) / 10.0f;
 
         StudyPlan plan = studyPlanMapper.selectById(planId);
@@ -230,6 +254,7 @@ public class PlanServiceImpl implements PlanService {
         List<PlanVO> vos = plans.stream().map(p -> {
             PlanVO vo = new PlanVO();
             BeanUtils.copyProperties(p, vo);
+            vo.setInterruptionRisk(hasInterruptionRisk(p.getId()) ? 1 : 0);
             return vo;
         }).collect(Collectors.toList());
         return Result.success(vos);
@@ -246,8 +271,6 @@ public class PlanServiceImpl implements PlanService {
             return Result.error(403, "无权删除该计划");
         }
         // 级联删除学习记录
-        QueryWrapper<StudyRecord> recordWrapper = new QueryWrapper<>();
-        recordWrapper.eq("task_id", planId);
         List<StudyTask> tasks = studyTaskMapper.findByPlanIdOrderByTaskDateAsc(planId);
         for (StudyTask task : tasks) {
             QueryWrapper<StudyRecord> rw = new QueryWrapper<>();
@@ -383,7 +406,7 @@ public class PlanServiceImpl implements PlanService {
             StudyTask task = new StudyTask();
             task.setPlanId(plan.getId());
             task.setMaterialId(materialIds.get(dayIndex % materialIds.size()));
-            task.setTaskName("第" + dayIndex + "天学习任务");
+            task.setTaskName("第" + (dayIndex + 1) + "天学习任务");
             task.setTaskDate(currentDate);
             task.setPlannedHours(plan.getDailyHours());
             task.setStatus("pending");
@@ -402,6 +425,7 @@ public class PlanServiceImpl implements PlanService {
     private PlanVO convertToPlanVO(StudyPlan plan, List<StudyTask> tasks) {
         PlanVO vo = new PlanVO();
         BeanUtils.copyProperties(plan, vo);
+        vo.setInterruptionRisk(hasInterruptionRisk(plan.getId()) ? 1 : 0);
         if (tasks != null) {
             List<TaskVO> taskVos = tasks.stream().map(t -> {
                 TaskVO tv = new TaskVO();
@@ -431,6 +455,33 @@ public class PlanServiceImpl implements PlanService {
             }
         }
         return vo;
+    }
+
+    @Override
+    public boolean hasInterruptionRisk(Long planId) {
+        LocalDate today = LocalDate.now();
+
+        QueryWrapper<StudyTask> wrapper = new QueryWrapper<>();
+        wrapper.eq("plan_id", planId)
+               .ge("task_date", today.minusDays(2))
+               .le("task_date", today)
+               .orderByAsc("task_date");
+        List<StudyTask> recentTasks = studyTaskMapper.selectList(wrapper);
+
+        if (recentTasks.isEmpty()) {
+            return false;
+        }
+
+        for (StudyTask task : recentTasks) {
+            QueryWrapper<StudyRecord> recordWrapper = new QueryWrapper<>();
+            recordWrapper.eq("task_id", task.getId());
+            Long count = studyRecordMapper.selectCount(recordWrapper);
+            if (count != null && count > 0) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     @Override

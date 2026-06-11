@@ -49,7 +49,7 @@ public class MaterialController {
     private AiEngineService aiEngineService;
 
     @PostMapping("/upload")
-    public Result<MaterialVO> upload(
+    public Result<MaterialDetailVO> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam(required = false) String courseTag,
             @RequestParam(required = false) Integer pages) {
@@ -65,13 +65,18 @@ public class MaterialController {
         }
         try {
             Material material = materialService.upload(file, userId, courseTag, pages);
-            MaterialVO vo = new MaterialVO();
-            vo.setId(material.getId());
-            vo.setTitle(material.getTitle());
-            vo.setStatus(material.getStatus());
-            vo.setSource(material.getSource());
-            vo.setCreatedAt(material.getCreatedAt());
-            return Result.success(vo);
+            // 返回完整详情（含OCR结果），使前端上传页可直接展示
+            MaterialDetailVO detail = materialService.getDetail(material.getId());
+            if (detail == null) {
+                // 兜底：若 getDetail 过滤返回 null，构造简化响应
+                detail = new MaterialDetailVO();
+                detail.setId(material.getId());
+                detail.setTitle(material.getTitle());
+                detail.setStatus(material.getStatus());
+                detail.setSource(material.getSource());
+                detail.setCreatedAt(material.getCreatedAt());
+            }
+            return Result.success(detail);
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         } catch (RuntimeException e) {
@@ -193,10 +198,19 @@ public class MaterialController {
             throw new RuntimeException("未登录");
         }
 
-        // 1. 校验资料存在且属于当前用户
+        // 1. 校验资料存在，且未被管理员删除
         Material material = materialService.getMaterialById(id);
-        if (material == null || !material.getUserId().equals(userId)) {
+        if (material == null) {
+            throw new RuntimeException("资料不存在");
+        }
+        // 管理员可访问任意资料，普通用户只能访问自己的
+        String role = CurrentUserUtils.getCurrentUserRole();
+        boolean isAdmin = "ADMIN".equals(role);
+        if (!isAdmin && !material.getUserId().equals(userId)) {
             throw new RuntimeException("无权访问该资料");
+        }
+        if (material.getDeletedAt() != null || "admin".equals(material.getDeletedBy())) {
+            throw new RuntimeException("资料已被删除或不可访问");
         }
 
         // 2. 从 MinIO 获取文件流

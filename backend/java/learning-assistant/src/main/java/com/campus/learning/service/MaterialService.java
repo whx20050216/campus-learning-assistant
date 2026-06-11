@@ -15,6 +15,8 @@ public interface MaterialService {
 
     MaterialDetailVO getDetail(Long id);
 
+    MaterialDetailVO getDetailForAdmin(Long id);
+
     Page<MaterialVO> getList(Long userId, String courseTag, int page, int size);
 
     void delete(Long id, Long userId);

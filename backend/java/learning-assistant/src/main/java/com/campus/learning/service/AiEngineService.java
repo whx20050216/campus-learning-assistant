@@ -19,10 +19,25 @@ import java.util.Map;
 @Service
 public class AiEngineService {
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
+    private final RestTemplate shortTimeoutRestTemplate;
 
     @Value("${python.api.url:http://localhost:8000}")
     private String pythonApiUrl;
+
+    public AiEngineService() {
+        // 主 RestTemplate：连接5秒，读取25秒（OCR处理可能耗时较长）
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(25000);
+        this.restTemplate = new RestTemplate(factory);
+
+        // 短超时 RestTemplate：连接5秒，读取5秒（用于智谱API增强）
+        SimpleClientHttpRequestFactory shortFactory = new SimpleClientHttpRequestFactory();
+        shortFactory.setConnectTimeout(5000);
+        shortFactory.setReadTimeout(5000);
+        this.shortTimeoutRestTemplate = new RestTemplate(shortFactory);
+    }
 
     /**
      * 调用 Python OCR 服务
@@ -163,7 +178,7 @@ public class AiEngineService {
 
             log.info("调用 Python API 增强服务，文本长度: {}", text != null ? text.length() : 0);
 
-            ResponseEntity<Map> response = restTemplate.postForEntity(
+            ResponseEntity<Map> response = shortTimeoutRestTemplate.postForEntity(
                     pythonApiUrl + "/ai/enhance",
                     request,
                     Map.class

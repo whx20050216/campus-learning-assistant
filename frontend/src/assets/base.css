@@ -216,3 +216,12 @@ a:hover {
   color: var(--primary-600);
   text-decoration: underline;
 }
+
+/* 搜索高亮标记 */
+mark {
+  background: var(--warning-100);
+  color: var(--warning-500);
+  padding: 0 2px;
+  border-radius: 2px;
+  font-weight: 600;
+}

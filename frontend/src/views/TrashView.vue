@@ -45,6 +45,23 @@
                     {{ getStatusText(item.status) }}
                   </el-tag>
                   <span class="meta-sep">·</span>
+                  <el-tag
+                    v-if="item.deletedBy === 'admin'"
+                    size="small"
+                    type="danger"
+                    effect="light"
+                  >
+                    管理员拒绝
+                  </el-tag>
+                  <el-tag
+                    v-else
+                    size="small"
+                    type="info"
+                    effect="light"
+                  >
+                    用户删除
+                  </el-tag>
+                  <span class="meta-sep">·</span>
                   <span class="meta-size">{{ formatSize(item.fileSize) }}</span>
                 </div>
               </div>
@@ -54,7 +71,7 @@
             <div class="trash-card-middle">
               <div class="trash-delete-time">
                 <el-icon><Delete /></el-icon>
-                <span>删除于 {{ formatTime(item.deletedAt) }}</span>
+                <span>{{ item.deletedBy === 'admin' ? '拒绝于' : '删除于' }} {{ formatTime(item.deletedAt) }}</span>
               </div>
               <div class="trash-remaining">
                 <el-icon><Timer /></el-icon>
@@ -64,7 +81,12 @@
 
             <!-- 底部操作 -->
             <div class="trash-card-footer">
-              <el-button type="primary" size="small" @click="handleRestore(item.id)">
+              <el-button
+                v-if="item.deletedBy !== 'admin'"
+                type="primary"
+                size="small"
+                @click="handleRestore(item.id)"
+              >
                 <el-icon><RefreshLeft /></el-icon> 恢复
               </el-button>
               <el-button type="danger" size="small" plain @click="handlePermanentDelete(item.id)">

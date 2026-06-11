@@ -2,9 +2,11 @@ package com.campus.learning.service.Impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.campus.learning.dto.Result;
+import com.campus.learning.entity.ExamPaper;
 import com.campus.learning.entity.Material;
 import com.campus.learning.entity.StudyPlan;
 import com.campus.learning.entity.StudyRecord;
+import com.campus.learning.mapper.ExamPaperMapper;
 import com.campus.learning.mapper.MaterialMapper;
 import com.campus.learning.mapper.StudyPlanMapper;
 import com.campus.learning.mapper.StudyRecordMapper;
@@ -34,6 +36,9 @@ public class AnalysisServiceImpl implements AnalysisService {
 
     @Autowired
     private StudyRecordMapper studyRecordMapper;
+
+    @Autowired
+    private ExamPaperMapper examPaperMapper;
 
     @Override
     public Result<DashboardVO> getDashboard(Long userId, String timeRange) {
@@ -76,6 +81,25 @@ public class AnalysisServiceImpl implements AnalysisService {
             pieItems.add(item);
         });
         dashboard.setCourseDistribution(pieItems);
+
+        // 1.5 试卷按课程分组统计
+        QueryWrapper<ExamPaper> examWrapper = new QueryWrapper<>();
+        examWrapper.eq("user_id", userId);
+        List<ExamPaper> examPapers = examPaperMapper.selectList(examWrapper);
+        dashboard.setExamCount(examPapers.size());
+
+        Map<String, Long> examCourseGroup = examPapers.stream()
+                .filter(e -> e.getCourseTag() != null && !e.getCourseTag().isEmpty())
+                .collect(Collectors.groupingBy(ExamPaper::getCourseTag, Collectors.counting()));
+
+        List<PieItem> examPieItems = new ArrayList<>();
+        examCourseGroup.forEach((tag, count) -> {
+            PieItem item = new PieItem();
+            item.setName(tag);
+            item.setValue(count.intValue());
+            examPieItems.add(item);
+        });
+        dashboard.setExamDistribution(examPieItems);
 
         // 2. 当前进行中的计划进度条（与时间维度无关）
         QueryWrapper<StudyPlan> planWrapper = new QueryWrapper<>();

@@ -61,6 +61,10 @@ export function auditMaterial(materialId: number, action: 'approve' | 'reject') 
   return request.post<any, { code: number; msg: string; data: null }>(`/api/admin/materials/${materialId}/audit?action=${action}`)
 }
 
+export function getAdminMaterialDetail(materialId: number) {
+  return request.get<any, { code: number; msg: string; data: any }>(`/api/admin/materials/${materialId}/detail`)
+}
+
 export function getCurrentUser() {
   return request.get<any, { code: number; msg: string; data: User }>('/api/auth/me')
 }

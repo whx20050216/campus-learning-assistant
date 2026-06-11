@@ -70,18 +70,21 @@ const router = createRouter({
       name: 'Trash',
       component: () => import('../views/TrashView.vue')
     },
+    {
+      path: '/exams',
+      name: 'ExamList',
+      component: () => import('../views/ExamListView.vue')
+    },
+    {
+      path: '/exams/:id/answer',
+      name: 'ExamAnswer',
+      component: () => import('../views/ExamAnswerView.vue')
+    },
   ],
 })
 
-function getRoleFromToken(): string | null {
-  const token = localStorage.getItem('token')
-  if (!token) return null
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    return payload.role || null
-  } catch {
-    return null
-  }
+function getRoleFromStorage(): string | null {
+  return localStorage.getItem('role')
 }
 
 router.beforeEach((to, from, next) => {
@@ -96,7 +99,7 @@ router.beforeEach((to, from, next) => {
 
   // admin 路由角色守卫
   if (to.path === '/admin') {
-    const role = getRoleFromToken()
+    const role = getRoleFromStorage()
     if (role !== 'ADMIN') {
       next('/')
       return

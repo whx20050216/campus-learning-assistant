@@ -94,12 +94,8 @@ public class AuthController {
             return Result.error("密码不能为空");
         }
 
-        // 登录失败锁定检查
+        // 登录失败锁定检查（使用Redis原子INCR避免竞态条件）
         String failKey = "login:fail:" + dto.getAccount();
-        String failCountStr = redisTemplate.opsForValue().get(failKey);
-        if (failCountStr != null && Integer.parseInt(failCountStr) >= 5) {
-            return Result.error("账号或密码错误，该账号已锁定30分钟");
-        }
 
         User user = null;
 
@@ -123,11 +119,13 @@ public class AuthController {
 
         if (!encoder.matches(dto.getPassword(), user.getPassword())) {
             Long count = redisTemplate.opsForValue().increment(failKey, 1);
-            if (count != null && count == 1) {
-                redisTemplate.expire(failKey, 30, TimeUnit.MINUTES);
-            }
-            if (count != null && count >= 5) {
-                return Result.error("账号或密码错误，该账号已锁定30分钟");
+            if (count != null) {
+                if (count == 1) {
+                    redisTemplate.expire(failKey, 30, TimeUnit.MINUTES);
+                }
+                if (count >= 5) {
+                    return Result.error("账号或密码错误，该账号已锁定30分钟");
+                }
             }
             return Result.error("账号或密码错误");
         }
@@ -158,23 +156,18 @@ public class AuthController {
         TokenVO vo = new TokenVO();
         vo.setAccessToken(accessToken);
         vo.setRefreshToken(refreshToken);
+        vo.setRole(user.getRole());
         return Result.success(vo);
     }
 
     @GetMapping("/me")
-    public Result<UserVO> me(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+    public Result<UserVO> me() {
+        Long userId = CurrentUserUtils.getCurrentUserId();
+        if (userId == null) {
             return Result.error(401, "未登录");
         }
 
-        String token = authHeader.substring(7);
-        if (!jwtUtils.validateToken(token)) {
-            return Result.error(401, "Token 无效或已过期");
-        }
-
-        Long userId = jwtUtils.getUserId(token);
         User user = userMapper.selectById(userId);
-
         if (user == null) {
             return Result.error(401, "用户不存在");
         }
@@ -205,13 +198,16 @@ public class AuthController {
             return Result.error("用户不存在");
         }
 
-        String newAccessToken = jwtUtils.generateToken(user.getId(), user.getRole(), 7200000L);
+        boolean rememberMe = Boolean.TRUE.equals(dto.getRememberMe());
+        long accessTokenExpireMs = rememberMe ? 604800000L : 7200000L;
+
+        String newAccessToken = jwtUtils.generateToken(user.getId(), user.getRole(), accessTokenExpireMs);
         String newRefreshToken = jwtUtils.generateRefreshToken(user.getId());
 
         redisTemplate.opsForValue().set(
                 "token:" + userId,
                 newAccessToken,
-                7200000L,
+                accessTokenExpireMs,
                 TimeUnit.MILLISECONDS
         );
 
@@ -225,6 +221,7 @@ public class AuthController {
         TokenVO vo = new TokenVO();
         vo.setAccessToken(newAccessToken);
         vo.setRefreshToken(newRefreshToken);
+        vo.setRole(user.getRole());
         return Result.success(vo);
     }
 

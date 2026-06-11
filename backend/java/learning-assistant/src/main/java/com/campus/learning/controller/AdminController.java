@@ -8,6 +8,8 @@ import com.campus.learning.mapper.MaterialMapper;
 import com.campus.learning.mapper.StudyPlanMapper;
 import com.campus.learning.mapper.UserMapper;
 import com.campus.learning.security.CurrentUserUtils;
+import com.campus.learning.service.MaterialService;
+import com.campus.learning.vo.MaterialDetailVO;
 import com.campus.learning.vo.SystemStatusVO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -43,8 +45,14 @@ public class AdminController {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    @Autowired
+    private MaterialService materialService;
+
     @Value("${python.api.url:http://python-app:8000}")
     private String pythonApiUrl;
+
+    @Value("${monitor.disk.path:/}")
+    private String monitorDiskPath;
 
     private <T> Result<T> checkAdmin() {
         Long userId = CurrentUserUtils.getCurrentUserId();
@@ -101,6 +109,19 @@ public class AdminController {
                 .orderByDesc("created_at");
         Page<Material> materialPage = materialMapper.selectPage(pageParam, wrapper);
         return Result.success(materialPage);
+    }
+
+    @GetMapping("/materials/{materialId}/detail")
+    public Result<MaterialDetailVO> getMaterialDetail(@PathVariable Long materialId) {
+        Result<MaterialDetailVO> checkResult = checkAdmin();
+        if (checkResult != null) {
+            return checkResult;
+        }
+        MaterialDetailVO detail = materialService.getDetailForAdmin(materialId);
+        if (detail == null) {
+            return Result.error(404, "资料不存在");
+        }
+        return Result.success(detail);
     }
 
     @PostMapping("/materials/{materialId}/audit")
@@ -185,9 +206,9 @@ public class AdminController {
             vo.setRedisStatus("DOWN");
         }
 
-        // 5. 磁盘空间：监控根目录 /
+        // 5. 磁盘空间：监控配置路径
         try {
-            File root = new File("/");
+            File root = new File(monitorDiskPath);
             long totalSpace = root.getTotalSpace();
             long usableSpace = root.getUsableSpace();
             long usedSpace = totalSpace - usableSpace;
